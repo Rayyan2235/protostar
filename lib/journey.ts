@@ -167,7 +167,11 @@ export function reduce(s: Session, a: Action): Session {
       const flagged = added.filter((src) => src.level >= 3);
       if (flagged.length) {
         const pushback: Pushback = {
-          blocking: true, flagged: flagged.map((f) => f.name), options: ["selfreport", "route"], attempts: 0,
+          blocking: true,
+          flagged: flagged.map((f) => f.name),
+          flaggedRules: [...(s.pushback?.flaggedRules ?? []), ...flagged.flatMap((f) => (f.ruleId ? [f.ruleId] : []))],
+          options: ["selfreport", "route"],
+          attempts: 0,
         };
         next.pushback = pushback;
         log = [...log, {

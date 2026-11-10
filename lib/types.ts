@@ -19,6 +19,8 @@ export interface Source {
   level: Level;
   decidedBy: "rule" | "model";
   reason: string;
+  /** Which rule matched, when decidedBy is "rule". */
+  ruleId?: string;
 }
 
 export interface Decision {
@@ -39,6 +41,8 @@ export interface Pushback {
   blocking: boolean;
   /** The sources that triggered it (Level 3–4). */
   flagged: string[];
+  /** Rule ids behind the flag; once resolved, the same rule doesn't re-flag. */
+  flaggedRules: string[];
   options: PushbackChoice[];
   choice?: PushbackChoice;
   attempts: number;

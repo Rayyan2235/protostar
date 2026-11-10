@@ -4,7 +4,7 @@
 
 A staff member types one sentence ("I want an agent that answers change-of-major questions"). Protostar interviews them, pushes back on risky data (FERPA), offers scoped options with a monthly cost estimate, drafts and tests the agent on two models against real public pages, and hands a reviewer a one-page blueprint to approve.
 
-**Status:** Phase 0 (setup). Not usable yet.
+**Status:** Phase 1. The interview and the data gate work end to end; scope, tests and the blueprint come next. Try it without keys: `LLM_PROVIDER=offline`.
 
 ## Run
 

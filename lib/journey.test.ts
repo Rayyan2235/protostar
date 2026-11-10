@@ -139,6 +139,44 @@ test("each shown question is logged; a question is hidden and unlogged while the
   assert.equal(t.log.at(-1)?.what, "What must it never do?");
 });
 
+const finished = () => {
+  let s = run(started(), turn({ prefilled: [
+    { key: "users", value: "Sophomores", confidence: 0.9 },
+    { key: "top", value: "GPA, courses, timing", confidence: 0.9 },
+    { key: "sources", value: "Bulletin, Smeal page", confidence: 0.9 },
+  ] }));
+  for (const v of ["promise admission", "great: X / bad: Y", "appeals, medical"]) s = run(s, answer(v), turn());
+  return s;
+};
+
+test("choosing a scope records model, knobs and a cost estimate, then moves to tests", () => {
+  const s = finished();
+  assert.deepEqual(allowed(s), ["CHOOSE_SCOPE", "RESET"]);
+  const t = reduce(s, {
+    type: "CHOOSE_SCOPE", scope: "guided", role: "capable", model: "claude-sonnet-5",
+    price: { name: "Claude Sonnet 5", inPerM: 2, outPerM: 10 }, knobs: { studentsPerMonth: 2000, convsPerStudent: 2 }, at,
+  });
+  assert.equal(t.step, "tests");
+  assert.equal(t.scope, "guided");
+  assert.deepEqual(t.model, { role: "capable", name: "claude-sonnet-5" });
+  assert.equal(t.estimate?.monthlyDollars, 112);
+  assert.match(t.log.at(-1)!.what, /Guided eligibility check.*\$112\/month/);
+  assert.equal(t.log.at(-1)!.who, "requester");
+});
+
+test("a model with no known price gets no estimate, and the log says so", () => {
+  const t = reduce(finished(), { type: "CHOOSE_SCOPE", scope: "faq", role: "cheap", model: "gpt-5.4-mini", knobs: { studentsPerMonth: 100, convsPerStudent: 1 }, at });
+  assert.equal(t.estimate, undefined);
+  assert.match(t.log.at(-1)!.what, /no price on file/);
+});
+
+test("scope can't be chosen during the interview", () => {
+  const s = started();
+  const t = reduce(s, { type: "CHOOSE_SCOPE", scope: "faq", role: "cheap", model: "x", knobs: { studentsPerMonth: 1, convsPerStudent: 1 }, at });
+  assert.equal(t.scope, undefined);
+  assert.match(t.log.at(-1)!.what, /Blocked/);
+});
+
 test("every decision is logged with who made it", () => {
   const s = run(started(), turn({ sources: [audit] }), { type: "RESOLVE_PUSHBACK", choice: "route", at });
   const whos = new Set(s.log.map((d) => d.who));

@@ -1,4 +1,5 @@
 /** Shared contract. Mirrors the planning vault's codebase-architecture note. */
+import type { Estimate } from "./scoper";
 
 export type Who = "requester" | "tool" | "reviewer";
 /** Penn State data classification. AI Studio allows Levels 1–2. */
@@ -24,7 +25,7 @@ export interface Source {
 }
 
 export type DecisionKind =
-  | "idea" | "question" | "answer" | "edit" | "prefill" | "source" | "flag" | "resolve" | "blocked" | "done" | "note";
+  | "idea" | "question" | "answer" | "edit" | "prefill" | "source" | "flag" | "resolve" | "blocked" | "done" | "scope" | "note";
 
 export interface Decision {
   at: string;
@@ -67,6 +68,10 @@ export interface Session {
   pushback?: Pushback;
   scope?: "faq" | "guided" | "open";
   knobs: { studentsPerMonth: number; convsPerStudent: number };
+  /** Chosen model: role from config plus the concrete model/deployment name. */
+  model?: { role: "cheap" | "capable"; name: string };
+  /** Cost estimate recorded when the scope was chosen (public list prices). */
+  estimate?: Estimate;
   log: Decision[];
 }
 

@@ -12,6 +12,7 @@
 import type {
   Decision, DecisionKind, InterviewTurn, Level, Pushback, PushbackChoice, Question, Session, Slot, SlotKey, Source, Step, Who,
 } from "./types";
+import { cleanKnobs, estimate, formatDollars, scopeByKey, type Knobs, type ModelRole, type Price, type ScopeKey } from "./scoper";
 
 export const STEPS: Step[] = ["idea", "interview", "scope", "tests", "blueprint", "review", "done"];
 
@@ -54,6 +55,7 @@ export type Action =
   | { type: "ANSWER"; value: string; at: string }
   | { type: "EDIT_SLOT"; key: SlotKey; value: string; at: string }
   | { type: "RESOLVE_PUSHBACK"; choice: PushbackChoice | "keep"; at: string }
+  | { type: "CHOOSE_SCOPE"; scope: ScopeKey; role: ModelRole; model: string; price?: Price; knobs: Knobs; at: string }
   | { type: "RESET"; at: string };
 
 export function initial(id: string, at: string): Session {
@@ -76,6 +78,8 @@ export function allowed(s: Session): Action["type"][] {
     case "interview":
       if (blocking(s)) return ["RESOLVE_PUSHBACK", "RESET"];
       return s.question ? ["ANSWER", "EDIT_SLOT", "RESET"] : ["APPLY_TURN", "EDIT_SLOT", "RESET"];
+    case "scope":
+      return ["CHOOSE_SCOPE", "RESET"];
     default:
       return ["RESET"]; // later phases add their actions here
   }
@@ -243,6 +247,19 @@ export function reduce(s: Session, a: Action): Session {
         log: say(s, a.at, "requester", what, "resolve"),
       };
       return maybeFinish(ask(next, a.at, s.question), a.at);
+    }
+
+    case "CHOOSE_SCOPE": {
+      const knobs = cleanKnobs(a.knobs);
+      const sc = scopeByKey(a.scope);
+      const est = a.price ? estimate(a.scope, a.price, knobs) : undefined;
+      const cost = est
+        ? `est. ${formatDollars(est.monthlyDollars)}/month for ${knobs.studentsPerMonth.toLocaleString("en-US")} students × ${knobs.convsPerStudent} conversations (list prices ${est.pricesAsOf})`
+        : "no price on file for this model, so no estimate";
+      return {
+        ...s, step: "tests", scope: a.scope, knobs, model: { role: a.role, name: a.model }, estimate: est,
+        log: say(s, a.at, "requester", `Scope: ${sc.label} (risk ${sc.risk}) on ${a.price?.name ?? a.model}; ${cost}.`, "scope"),
+      };
     }
   }
   return s;

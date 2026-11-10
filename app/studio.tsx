@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Decision, Session, SlotKey, Source } from "@/lib/types";
+import type { Catalog } from "@/lib/engine";
+import { ScopePicker, ScopeSummary } from "./scope";
 
-type ApiResult = { session?: Session; error?: string; mode?: string };
+type ApiResult = { session?: Session; error?: string; mode?: string; catalog?: Catalog };
 
 const SLOT_LABELS: Record<SlotKey, string> = {
   users: "Who uses it",
@@ -34,6 +36,7 @@ async function call(path: string, body?: unknown): Promise<ApiResult> {
 export default function Studio() {
   const [session, setSession] = useState<Session>();
   const [mode, setMode] = useState<string>();
+  const [catalog, setCatalog] = useState<Catalog>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const [text, setText] = useState("");
@@ -46,6 +49,7 @@ export default function Studio() {
       window.history.replaceState(null, "", url);
     }
     if (r.mode) setMode(r.mode);
+    if (r.catalog) setCatalog(r.catalog);
     setError(r.error);
   }, []);
 
@@ -109,7 +113,11 @@ export default function Studio() {
                     <button onClick={() => send({ type: "retry" })} disabled={busy} className="shrink-0 font-medium underline">Retry</button>
                   </div>
                 )}
-                <Composer session={session} busy={busy} text={text} setText={setText} onAnswer={answer} onResolve={(choice) => send({ type: "resolve", choice })} />
+                {session.step === "scope" && catalog ? (
+                  <ScopePicker session={session} catalog={catalog} busy={busy} onChoose={(scope, role, knobs) => send({ type: "choose_scope", scope, role, knobs })} />
+                ) : (
+                  <Composer session={session} busy={busy} text={text} setText={setText} onAnswer={answer} onResolve={(choice) => send({ type: "resolve", choice })} />
+                )}
               </div>
             </>
           )}
@@ -170,6 +178,7 @@ function Transcript({ log }: { log: Decision[] }) {
           case "answer":
           case "resolve":
           case "edit":
+          case "scope":
             return (
               <div key={i} className="flex justify-end">
                 <p className="max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-indigo-600 px-4 py-2 text-white">{d.what}</p>
@@ -202,8 +211,9 @@ function Composer({ session, busy, text, setText, onAnswer, onResolve }: {
   onAnswer: (s: string) => void; onResolve: (c: "selfreport" | "route" | "keep") => void;
 }) {
   if (session.pushback?.blocking) return <PushbackCard session={session} busy={busy} onResolve={onResolve} />;
-  if (session.step === "scope") {
-    return <p className="text-sm text-zinc-600">Interview complete. Next step: scope options with a monthly cost estimate (coming in Phase 2).</p>;
+  if (session.step === "scope") return <p className="text-sm text-zinc-500">Loading scope options…</p>;
+  if (session.step === "tests") {
+    return <p className="text-sm text-zinc-600">Scope chosen. Next: the tool drafts the agent and runs its tests on both models. That step needs live models (Phase 2, in progress).</p>;
   }
   if (busy || !session.question) return <p className="text-sm text-zinc-500">{busy ? "Thinking…" : "Waiting for the interviewer."}</p>;
 
@@ -334,6 +344,8 @@ function SpecPanel({ session, busy, onEdit }: { session?: Session; busy: boolean
         )}
         <p className="mt-3 text-xs text-zinc-400">Levels: Penn State data classes. “rule” = decided by a fixed table; “model” = classified by AI because no rule matched.</p>
       </div>
+
+      {session?.scope && <ScopeSummary session={session} />}
 
       {session && (
         <details className="rounded-xl border border-zinc-200 bg-white p-4">

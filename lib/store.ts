@@ -12,7 +12,8 @@ let db: Database.Database | undefined;
 
 export function openDb(file = process.env.DATABASE_PATH || "./data/protostar.db"): Database.Database {
   if (db) return db;
-  if (file !== ":memory:") mkdirSync(path.dirname(path.resolve(file)), { recursive: true });
+  // The DB path is runtime config, not a project file: keep it out of build tracing.
+  if (file !== ":memory:") mkdirSync(path.dirname(path.resolve(/*turbopackIgnore: true*/ file)), { recursive: true });
   db = new Database(file);
   db.pragma("journal_mode = WAL");
   db.exec(`

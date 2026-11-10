@@ -121,6 +121,24 @@ test("the same source is not added twice", () => {
   assert.equal(s.sources.length, 1);
 });
 
+test("the idea and each answer wait as pending text until a tool turn", () => {
+  let s = started();
+  assert.equal(s.pending, "Help students see if they can switch into Finance");
+  s = run(s, turn());
+  assert.equal(s.pending, undefined);
+  s = run(s, answer("Sophomores"));
+  assert.equal(s.pending, "Sophomores");
+});
+
+test("each shown question is logged; a question is hidden and unlogged while the gate blocks", () => {
+  const s = run(started(), turn({ sources: [audit], question: { slot: "never", ask: "What must it never do?", chips: [] } }));
+  assert.ok(s.question, "question kept for later");
+  assert.equal(s.log.filter((d) => d.kind === "question").length, 0);
+  const t = reduce(s, { type: "RESOLVE_PUSHBACK", choice: "selfreport", at });
+  assert.equal(t.log.at(-1)?.kind, "question");
+  assert.equal(t.log.at(-1)?.what, "What must it never do?");
+});
+
 test("every decision is logged with who made it", () => {
   const s = run(started(), turn({ sources: [audit] }), { type: "RESOLVE_PUSHBACK", choice: "route", at });
   const whos = new Set(s.log.map((d) => d.who));

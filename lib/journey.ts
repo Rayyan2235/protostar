@@ -10,7 +10,7 @@
  * when the interview ends, and when the data gate blocks.
  */
 import type {
-  Decision, InterviewTurn, Level, Pushback, PushbackChoice, Question, Session, Slot, SlotKey, Source, Step, Who,
+  Decision, DecisionKind, InterviewTurn, Level, Pushback, PushbackChoice, Question, Session, Slot, SlotKey, Source, Step, Who,
 } from "./types";
 
 export const STEPS: Step[] = ["idea", "interview", "scope", "tests", "blueprint", "review", "done"];
@@ -50,7 +50,7 @@ export const PUSHBACK_RULES: Record<PushbackChoice, string> = {
 
 export type Action =
   | { type: "SUBMIT_IDEA"; text: string; at: string }
-  | { type: "APPLY_TURN"; prefilled: InterviewTurn["prefilled"]; sources: Source[]; question?: Question; at: string }
+  | { type: "APPLY_TURN"; prefilled: InterviewTurn["prefilled"]; sources: Source[]; question?: Question; by?: string; at: string }
   | { type: "ANSWER"; value: string; at: string }
   | { type: "EDIT_SLOT"; key: SlotKey; value: string; at: string }
   | { type: "RESOLVE_PUSHBACK"; choice: PushbackChoice | "keep"; at: string }
@@ -60,11 +60,12 @@ export function initial(id: string, at: string): Session {
   return {
     id, step: "idea", idea: "", slots: [], sources: [], asked: 0,
     knobs: { studentsPerMonth: 2000, convsPerStudent: 2 },
-    log: [{ at, who: "tool", what: "Session started." }],
+    log: [{ at, who: "tool", what: "Session started.", kind: "note" }],
   };
 }
 
-const say = (s: Session, at: string, who: Who, what: string): Decision[] => [...s.log, { at, who, what }];
+const entry = (at: string, who: Who, what: string, kind: DecisionKind): Decision => ({ at, who, what, kind });
+const say = (s: Session, at: string, who: Who, what: string, kind: DecisionKind): Decision[] => [...s.log, entry(at, who, what, kind)];
 const slot = (s: Session, key: SlotKey) => s.slots.find((x) => x.key === key);
 const blocking = (s: Session) => !!s.pushback?.blocking;
 
@@ -118,17 +119,29 @@ function upsertSlot(slots: Slot[], next: Slot): Slot[] {
 
 const sameSource = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
-function levelLabel(level: Level) {
+export function levelLabel(level: Level) {
   return ["", "Level 1 · Public", "Level 2 · Internal", "Level 3 · High (FERPA student records)", "Level 4 · Restricted"][level];
 }
 
-/** Move to scope if nothing is left to ask; otherwise leave the interview waiting for a turn. */
+/**
+ * Set the next question and log it. While the data gate blocks, the question is kept
+ * but not shown or logged; RESOLVE_PUSHBACK shows it.
+ */
+function ask(s: Session, at: string, proposed?: Question): Session {
+  const question = nextQuestion(s, proposed);
+  if (!question) return { ...s, question: undefined };
+  if (blocking(s)) return { ...s, question };
+  return { ...s, question, log: say(s, at, "tool", question.ask, "question") };
+}
+
+/** Move to scope if nothing is left to ask; otherwise leave the interview waiting. */
 function maybeFinish(s: Session, at: string): Session {
-  if (blocking(s) || s.question) return s;
+  if (blocking(s) || s.question || s.pending) return s;
   if (nextQuestion(s) === undefined && missingSlots(s).filter((k) => REQUIRED.includes(k)).length === 0) {
+    const pre = s.slots.filter((x) => x.filledBy === "prefill").map((x) => x.key);
     return {
       ...s, step: "scope",
-      log: say(s, at, "tool", `Interview done after ${s.asked} answers. Prefilled: ${s.slots.filter((x) => x.filledBy === "prefill").map((x) => x.key).join(", ") || "none"}.`),
+      log: say(s, at, "tool", `Interview done after ${s.asked} answers. Prefilled: ${pre.join(", ") || "none"}.`, "done"),
     };
   }
   return s;
@@ -137,52 +150,51 @@ function maybeFinish(s: Session, at: string): Session {
 export function reduce(s: Session, a: Action): Session {
   if (a.type === "RESET") return initial(s.id, a.at);
   if (!allowed(s).includes(a.type)) {
-    return { ...s, log: say(s, a.at, "tool", `Blocked: "${a.type}" isn't possible at this step.`) };
+    return { ...s, log: say(s, a.at, "tool", `Blocked: "${a.type}" isn't possible at this step.`, "blocked") };
   }
 
   switch (a.type) {
     case "SUBMIT_IDEA": {
       const text = a.text.trim();
       if (!text) return s;
-      return { ...s, step: "interview", idea: text, log: say(s, a.at, "requester", `Idea: "${text}"`) };
+      return { ...s, step: "interview", idea: text, pending: text, log: say(s, a.at, "requester", text, "idea") };
     }
 
     case "APPLY_TURN": {
-      let next: Session = { ...s };
       let log = s.log;
+      let slots = s.slots;
+      if (a.by) log = [...log, entry(a.at, "tool", `Interviewer turn by ${a.by}.`, "note")];
 
       for (const p of a.prefilled) {
         if (!PREFILLABLE.includes(p.key) || !p.value.trim()) continue; // judgment slots are never prefilled
-        if (slot(next, p.key)?.filledBy === "requester") continue; // never overwrite the human
-        next.slots = upsertSlot(next.slots, { key: p.key, value: p.value.trim(), filledBy: "prefill", confidence: p.confidence });
-        log = [...log, { at: a.at, who: "tool", what: `Prefilled ${p.key} (confidence ${p.confidence.toFixed(2)}): ${p.value.trim()}` }];
+        if (slots.find((x) => x.key === p.key)?.filledBy === "requester") continue; // never overwrite the human
+        slots = upsertSlot(slots, { key: p.key, value: p.value.trim(), filledBy: "prefill", confidence: p.confidence });
+        log = [...log, entry(a.at, "tool", `Prefilled ${p.key} (confidence ${p.confidence.toFixed(2)}): ${p.value.trim()}`, "prefill")];
       }
 
-      const added = a.sources.filter((src) => !next.sources.some((x) => sameSource(x.name, src.name)));
-      next.sources = [...next.sources, ...added];
+      const added = a.sources
+        .filter((src) => !s.sources.some((x) => sameSource(x.name, src.name)))
+        .filter((src, i, arr) => arr.findIndex((y) => sameSource(y.name, src.name)) === i);
       for (const src of added) {
-        log = [...log, { at: a.at, who: "tool", what: `Source "${src.name}" → ${levelLabel(src.level)} (decided by ${src.decidedBy}: ${src.reason})` }];
+        log = [...log, entry(a.at, "tool", `Source "${src.name}" → ${levelLabel(src.level)}, decided by ${src.decidedBy}: ${src.reason}`, "source")];
       }
 
+      let pushback = s.pushback;
       const flagged = added.filter((src) => src.level >= 3);
       if (flagged.length) {
-        const pushback: Pushback = {
+        pushback = {
           blocking: true,
           flagged: flagged.map((f) => f.name),
           flaggedRules: [...(s.pushback?.flaggedRules ?? []), ...flagged.flatMap((f) => (f.ruleId ? [f.ruleId] : []))],
           options: ["selfreport", "route"],
           attempts: 0,
-        };
-        next.pushback = pushback;
-        log = [...log, {
-          at: a.at, who: "tool",
-          what: `Flag: ${flagged.map((f) => `"${f.name}" is ${levelLabel(f.level)}`).join("; ")}. AI Studio allows Levels 1–2 only.`,
-        }];
+        } satisfies Pushback;
+        log = [...log, entry(a.at, "tool",
+          `Flag: ${flagged.map((f) => `"${f.name}" is ${levelLabel(f.level)}`).join("; ")}. AI Studio allows Levels 1–2 only.`, "flag")];
       }
 
-      next.log = log;
-      next.question = nextQuestion(next, a.question);
-      return maybeFinish(next, a.at);
+      const next: Session = { ...s, slots, sources: [...s.sources, ...added], pushback, pending: undefined, log };
+      return maybeFinish(ask(next, a.at, a.question), a.at);
     }
 
     case "ANSWER": {
@@ -194,7 +206,8 @@ export function reduce(s: Session, a: Action): Session {
         slots: upsertSlot(s.slots, { key: q.slot, value, filledBy: "requester" }),
         asked: s.asked + 1,
         question: undefined,
-        log: say(s, a.at, "requester", `${q.ask} → ${value}`),
+        pending: value,
+        log: say(s, a.at, "requester", value, "answer"),
       };
     }
 
@@ -204,7 +217,7 @@ export function reduce(s: Session, a: Action): Session {
       return maybeFinish({
         ...s,
         slots: upsertSlot(s.slots, { key: a.key, value, filledBy: "requester" }),
-        log: say(s, a.at, "requester", `Edited ${a.key}: ${value}`),
+        log: say(s, a.at, "requester", `Edited ${a.key}: ${value}`, "edit"),
       }, a.at);
     }
 
@@ -214,7 +227,7 @@ export function reduce(s: Session, a: Action): Session {
         return {
           ...s, pushback: { ...pb, attempts: pb.attempts + 1 },
           log: say(s, a.at, "tool",
-            "Can't continue with Level 3–4 data in a self-serve agent. It would need a data steward and a Platform Agent review. Pick (a) or (b)."),
+            "Can't continue with Level 3–4 data in a self-serve agent. It would need a data steward and a Platform Agent review. Pick (a) or (b).", "blocked"),
         };
       }
       // The resulting rule lives on the pushback (see PUSHBACK_RULES), not in the
@@ -225,12 +238,11 @@ export function reduce(s: Session, a: Action): Session {
         ? "Chose (a): students self-report GPA and credits; nothing stored."
         : "Chose (b): no records; route record questions to an advising appointment.";
       const next: Session = {
-        ...s, sources,
+        ...s, sources, question: undefined,
         pushback: { ...pb, blocking: false, choice: a.choice },
-        log: say(s, a.at, "requester", what),
+        log: say(s, a.at, "requester", what, "resolve"),
       };
-      if (!next.question) next.question = nextQuestion(next);
-      return maybeFinish(next, a.at);
+      return maybeFinish(ask(next, a.at, s.question), a.at);
     }
   }
   return s;

@@ -23,10 +23,15 @@ export interface Source {
   ruleId?: string;
 }
 
+export type DecisionKind =
+  | "idea" | "question" | "answer" | "edit" | "prefill" | "source" | "flag" | "resolve" | "blocked" | "done" | "note";
+
 export interface Decision {
   at: string;
   who: Who;
   what: string;
+  /** UI hint only; the stored log is at/who/what. */
+  kind?: DecisionKind;
 }
 
 export interface Question {
@@ -55,6 +60,8 @@ export interface Session {
   slots: Slot[];
   sources: Source[];
   question?: Question;
+  /** Requester text waiting for a tool turn (idea or latest answer). Cleared by APPLY_TURN. */
+  pending?: string;
   /** Requester answers given so far (ADR 0001: min 3, max 6). */
   asked: number;
   pushback?: Pushback;

@@ -13,7 +13,7 @@ test("round-trips a session and appends decisions without duplicates", () => {
   saveSession(s);
   saveSession(s); // saving twice adds nothing
   assert.deepEqual(getSession("abc"), s);
-  assert.deepEqual(getDecisions("abc"), s.log);
+  assert.deepEqual(getDecisions("abc"), s.log.map(({ at, who, what }) => ({ at, who, what })));
 });
 
 test("reset replaces the stored log", () => {

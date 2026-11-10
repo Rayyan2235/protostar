@@ -11,7 +11,8 @@ import AnthropicFoundry from "@anthropic-ai/foundry-sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import type { z } from "zod";
 
-export type Provider = "foundry" | "anthropic" | "nebulaone";
+/** `offline` = no model at all; callers use scripted output and the UI says so. */
+export type Provider = "foundry" | "anthropic" | "nebulaone" | "offline";
 export type ModelRole = "cheap" | "capable" | "judge";
 
 export interface CompleteOptions<S extends z.ZodType> {
@@ -44,8 +45,8 @@ function env(name: string): string | undefined {
 
 export function provider(): Provider {
   const p = env("LLM_PROVIDER") ?? "foundry";
-  if (p !== "foundry" && p !== "anthropic" && p !== "nebulaone") {
-    throw new LLMError(`LLM_PROVIDER must be foundry | anthropic | nebulaone, got "${p}"`);
+  if (p !== "foundry" && p !== "anthropic" && p !== "nebulaone" && p !== "offline") {
+    throw new LLMError(`LLM_PROVIDER must be foundry | anthropic | nebulaone | offline, got "${p}"`);
   }
   return p;
 }
@@ -74,6 +75,7 @@ function client(): MessagesClient {
   const key = [p, apiKey, baseURL, resource].join("|");
   if (cached?.key === key) return cached.client;
 
+  if (p === "offline") throw new LLMError("LLM_PROVIDER=offline: no model calls are made in offline mode");
   if (!apiKey) throw new LLMError("LLM_API_KEY is not set (see .env.example)");
 
   let c: MessagesClient;

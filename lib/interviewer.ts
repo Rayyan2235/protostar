@@ -8,15 +8,15 @@
  */
 import { z } from "zod";
 import { complete, provider } from "./llm";
-import { FALLBACK_QUESTIONS, REQUIRED, missingSlots } from "./journey";
+import { FALLBACK_QUESTIONS, PREFILLABLE, REQUIRED, missingSlots } from "./journey";
 import { loadKnowledge } from "./knowledge";
-import type { InterviewTurn, Level, Session, SlotKey } from "./types";
+import { SLOT_KEYS, type InterviewTurn, type Level, type Session, type SlotKey } from "./types";
 
-const SLOT = z.enum(["users", "top", "never", "examples", "sources", "handoff"]);
+const SLOT = z.enum(SLOT_KEYS);
 
 export const TurnSchema = z.object({
   prefilled: z.array(z.object({
-    key: z.enum(["users", "top", "sources"]),
+    key: z.enum(PREFILLABLE),
     value: z.string(),
     confidence: z.number().describe("0 to 1. Use 0.8+ only when the idea or pages clearly answer it."),
   })),
@@ -49,7 +49,7 @@ function system(): string {
   return `You interview a university staff member who wants an AI agent built for students. You do not design the agent for them. You ask a few sharp questions so their judgment shapes it, and you fill in only what is obvious.
 
 The six things the spec needs:
-${(Object.keys(SLOT_MEANING) as SlotKey[]).map((k) => `- ${k}: ${SLOT_MEANING[k]}`).join("\n")}
+${SLOT_KEYS.map((k) => `- ${k}: ${SLOT_MEANING[k]}`).join("\n")}
 
 Rules:
 - Prefill only users, top and sources, and only when the idea or the pages below clearly answer them. Never prefill ${REQUIRED.join(", ")}: those are the requester's judgment.

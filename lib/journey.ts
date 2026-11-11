@@ -12,15 +12,16 @@
 import type {
   Decision, DecisionKind, InterviewTurn, Level, Pushback, PushbackChoice, Question, Session, Slot, SlotKey, Source, Step, Who,
 } from "./types";
+import { SLOT_KEYS } from "./types";
+import { SCENARIO } from "./scenario";
 import { cleanKnobs, estimate, formatDollars, scopeByKey, type Knobs, type ModelRole, type Price, type ScopeKey } from "./scoper";
 
 export const STEPS: Step[] = ["idea", "interview", "scope", "tests", "blueprint", "review", "done"];
 
-/** Natural interview order. */
-export const SLOT_ORDER: SlotKey[] = ["users", "top", "never", "examples", "sources", "handoff"];
 /** Judgment slots: always asked, never prefilled (ADR 0001). */
-export const REQUIRED: SlotKey[] = ["never", "examples", "handoff"];
-export const PREFILLABLE: SlotKey[] = ["users", "top", "sources"];
+export const REQUIRED = ["never", "examples", "handoff"] as const satisfies readonly SlotKey[];
+export const PREFILLABLE = ["users", "top", "sources"] as const satisfies readonly SlotKey[];
+const isRequired = (k: SlotKey) => (REQUIRED as readonly SlotKey[]).includes(k);
 export const MIN_QUESTIONS = 3;
 export const MAX_QUESTIONS = 6;
 /** Prefills below this confidence are still asked. */
@@ -36,18 +37,6 @@ export const FALLBACK_QUESTIONS: Record<SlotKey, string> = {
   handoff: "When should it stop and send the student to you?",
 };
 
-export const SELF_REPORT_SOURCE: Source = {
-  name: "Student self-reports GPA and credits in the chat (not stored)",
-  level: 1,
-  decidedBy: "rule",
-  reason: "Nothing is read from university records or kept after the conversation.",
-};
-
-/** The rule each pushback choice adds to the drafted agent. */
-export const PUSHBACK_RULES: Record<PushbackChoice, string> = {
-  selfreport: "Never ask for, read, or store student records. Use only the GPA and credits the student states in the chat, and say the answer depends on them.",
-  route: "Never read pasted records. Questions about a specific student's record go to an advising appointment.",
-};
 
 export type Action =
   | { type: "SUBMIT_IDEA"; text: string; at: string }
@@ -87,10 +76,10 @@ export function allowed(s: Session): Action["type"][] {
 
 /** Slots that still need a requester answer, in interview order. */
 export function missingSlots(s: Session): SlotKey[] {
-  return SLOT_ORDER.filter((key) => {
+  return SLOT_KEYS.filter((key) => {
     const v = slot(s, key);
     if (!v || !v.value.trim()) return true;
-    if (REQUIRED.includes(key)) return v.filledBy !== "requester";
+    if (isRequired(key)) return v.filledBy !== "requester";
     return v.filledBy === "prefill" && (v.confidence ?? 0) < PREFILL_THRESHOLD;
   });
 }
@@ -106,7 +95,7 @@ export function nextQuestion(s: Session, proposed?: Question): Question | undefi
   if (budget <= 0) return undefined;
   if (missing.length === 0) return undefined; // asked >= MIN is guaranteed: REQUIRED has 3 slots
 
-  const requiredMissing = missing.filter((k) => REQUIRED.includes(k));
+  const requiredMissing = missing.filter(isRequired);
   const mustAskRequired = budget <= requiredMissing.length;
   const legal = mustAskRequired ? requiredMissing : missing;
 
@@ -141,7 +130,7 @@ function ask(s: Session, at: string, proposed?: Question): Session {
 /** Move to scope if nothing is left to ask; otherwise leave the interview waiting. */
 function maybeFinish(s: Session, at: string): Session {
   if (blocking(s) || s.question || s.pending) return s;
-  if (nextQuestion(s) === undefined && missingSlots(s).filter((k) => REQUIRED.includes(k)).length === 0) {
+  if (nextQuestion(s) === undefined && missingSlots(s).filter(isRequired).length === 0) {
     const pre = s.slots.filter((x) => x.filledBy === "prefill").map((x) => x.key);
     return {
       ...s, step: "scope",
@@ -170,7 +159,7 @@ export function reduce(s: Session, a: Action): Session {
       if (a.by) log = [...log, entry(a.at, "tool", `Interviewer turn by ${a.by}.`, "note")];
 
       for (const p of a.prefilled) {
-        if (!PREFILLABLE.includes(p.key) || !p.value.trim()) continue; // judgment slots are never prefilled
+        if (!(PREFILLABLE as readonly SlotKey[]).includes(p.key) || !p.value.trim()) continue; // judgment slots are never prefilled
         if (slots.find((x) => x.key === p.key)?.filledBy === "requester") continue; // never overwrite the human
         slots = upsertSlot(slots, { key: p.key, value: p.value.trim(), filledBy: "prefill", confidence: p.confidence });
         log = [...log, entry(a.at, "tool", `Prefilled ${p.key} (confidence ${p.confidence.toFixed(2)}): ${p.value.trim()}`, "prefill")];
@@ -194,7 +183,7 @@ export function reduce(s: Session, a: Action): Session {
           attempts: 0,
         } satisfies Pushback;
         log = [...log, entry(a.at, "tool",
-          `Flag: ${flagged.map((f) => `"${f.name}" is ${levelLabel(f.level)}`).join("; ")}. AI Studio allows Levels 1–2 only.`, "flag")];
+          `Flag: ${flagged.map((f) => `"${f.name}" is ${levelLabel(f.level)}`).join("; ")}. ${SCENARIO.pushback.limit}`, "flag")];
       }
 
       const next: Session = { ...s, slots, sources: [...s.sources, ...added], pushback, pending: undefined, log };
@@ -230,17 +219,14 @@ export function reduce(s: Session, a: Action): Session {
       if (a.choice === "keep") {
         return {
           ...s, pushback: { ...pb, attempts: pb.attempts + 1 },
-          log: say(s, a.at, "tool",
-            "Can't continue with Level 3–4 data in a self-serve agent. It would need a data steward and a Platform Agent review. Pick (a) or (b).", "blocked"),
+          log: say(s, a.at, "tool", SCENARIO.pushback.keepAnywayReply, "blocked"),
         };
       }
-      // The resulting rule lives on the pushback (see PUSHBACK_RULES), not in the
+      // The resulting rule lives on the pushback (SCENARIO.pushback.options[choice].rule), not in the
       // requester's slots, so a later answer can't overwrite it.
       const sources = s.sources.filter((src) => src.level < 3);
-      if (a.choice === "selfreport") sources.push(SELF_REPORT_SOURCE);
-      const what = a.choice === "selfreport"
-        ? "Chose (a): students self-report GPA and credits; nothing stored."
-        : "Chose (b): no records; route record questions to an advising appointment.";
+      if (a.choice === "selfreport") sources.push(SCENARIO.pushback.selfReportSource);
+      const what = SCENARIO.pushback.options[a.choice].logLine;
       const next: Session = {
         ...s, sources, question: undefined,
         pushback: { ...pb, blocking: false, choice: a.choice },

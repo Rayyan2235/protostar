@@ -31,7 +31,7 @@ function runtimeImports(src: string): string[] {
     if (!/^type\b/.test(m[2])) specs.push(m[3]);
   }
   for (const m of code.matchAll(/^\s*import\s*["']([^"']+)["']/gm)) specs.push(m[1]);
-  for (const m of code.matchAll(/\b(?:import|require)\s*\(\s*["']([^"']+)["']\s*\)/g)) specs.push(m[1]);
+  for (const m of code.matchAll(/\b(?:import|require)\s*\(\s*["'`]([^"'`]+)["'`]\s*\)/g)) specs.push(m[1]);
   return specs;
 }
 

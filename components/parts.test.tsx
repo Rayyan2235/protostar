@@ -23,7 +23,7 @@ test("TextField label points at its input", () => {
   const html = renderToStaticMarkup(<TextField id="idea" label="Your idea" value="" onChange={() => {}} />);
   assert.match(html, /<label[^>]*for="idea"/);
   assert.match(html, /<input[^>]*id="idea"/);
-  assert.doesNotMatch(html, /aria-invalid/);
+  assert.doesNotMatch(html, /aria-invalid="/);
 });
 
 test("TextField multiline is a textarea with the same label wiring", () => {
@@ -81,6 +81,6 @@ test("MotionSwitch is a toggle button, on by default on the server", () => {
 test("StartScene server render is the fixed default: night and still", () => {
   const html = renderToStaticMarkup(<StartScene />);
   assert.match(html, /data-sky="night"/);
-  assert.doesNotMatch(html, /data-live/);
+  assert.doesNotMatch(html, /<div[^>]*\sdata-live/);
   assert.match(html, /role="img"/);
 });

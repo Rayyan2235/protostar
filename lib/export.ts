@@ -9,6 +9,9 @@ import type { Blueprint, BlueprintSlot } from "./types";
 /** A Markdown table cell: pipes escaped, line breaks kept as <br>. */
 const cell = (t: string) => t.replace(/\|/g, "\\|").replace(/\r?\n/g, "<br>");
 
+/** A code fence one backtick longer than the longest backtick run in `text` (min 3). */
+const fence = (text: string) => "`".repeat(Math.max(3, ...[...text.matchAll(/`+/g)].map((m) => m[0].length + 1)));
+
 function filledBy(x: BlueprintSlot): string {
   if (x.filledBy === "requester") return "Requester";
   return `Filled by the tool${x.confidence !== undefined ? ` (confidence ${x.confidence.toFixed(2)})` : ""}`;
@@ -16,6 +19,7 @@ function filledBy(x: BlueprintSlot): string {
 
 export function blueprintMarkdown(bp: Blueprint): string {
   const { data, scope } = bp;
+  const f = fence(bp.instructions.text);
   const cost = scope.estimate
     ? `- Estimated cost: ${formatDollars(scope.estimate.monthlyDollars)}/month`
     : "- Estimated cost: no list price for this model, so no estimate.";
@@ -60,9 +64,9 @@ export function blueprintMarkdown(bp: Blueprint): string {
     "",
     bp.instructions.draftedBy === "template" ? "_Template, not model-drafted._" : "_Drafted by a model._",
     "",
-    "```text",
+    `${f}text`,
     bp.instructions.text,
-    "```",
+    f,
     "",
     "## Tests",
     "",

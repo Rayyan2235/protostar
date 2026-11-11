@@ -82,3 +82,43 @@ test("editFlags: negated and Level 1–2 mentions pass", () => {
   assert.deepEqual(editFlags("sources", "never read transcripts"), []);
   assert.deepEqual(editFlags("sources", "the bulletin and our SharePoint FAQ"), []);
 });
+
+// --- Negation stays in its clause (BE-4 amendment 3) -------------------------------------
+
+const ruleIds = (hits: { ruleId?: string }[]) => hits.map((h) => h.ruleId);
+
+test("a negation in an earlier clause doesn't hide a record source", () => {
+  assert.deepEqual(ruleIds(scanText("No problem, students paste their degree audit")), ["degree-audit"]);
+  assert.deepEqual(ruleIds(scanText("We do not store it, but advisors read the degree audit")), ["degree-audit"]);
+  assert.deepEqual(ruleIds(scanText("Not sure yet: students upload transcripts")), ["transcript"]);
+  assert.deepEqual(ruleIds(scanText("No grades, transcripts get pasted in")), ["transcript"]);
+  assert.deepEqual(ruleIds(scanText("Not names, degree audits only")), ["degree-audit"]);
+});
+
+test("a negation in the same clause still hides the term", () => {
+  assert.deepEqual(scanText("never read transcripts"), []);
+  assert.deepEqual(scanText("don't use transcripts or degree audits"), []);
+});
+
+test("as a sources answer, a comma starts a new clause: fails closed", () => {
+  const text = "Never ask for transcripts, degree audits or student IDs";
+  assert.deepEqual(ruleIds(scanText(text, "sources")), ["degree-audit", "student-id"]);
+  assert.deepEqual(ruleIds(editFlags("sources", text)), ["degree-audit", "student-id"]);
+});
+
+test("as a never answer, commas don't split the clause", () => {
+  assert.deepEqual(editFlags("never", "Never ask for transcripts, degree audits or student IDs"), []);
+  assert.deepEqual(editFlags("never", "It must never ask for, look up, or read transcripts"), []);
+});
+
+test("as a never answer, ; and : and but still split the clause", () => {
+  const text = "It must never give admission advice; students will paste their degree audit";
+  assert.deepEqual(ruleIds(scanText(text, "never")), ["degree-audit"]);
+  assert.deepEqual(ruleIds(editFlags("never", text)), ["degree-audit"]);
+});
+
+test("gate passes the slot to the text scan", () => {
+  const text = "Never ask for transcripts, degree audits or student IDs";
+  assert.deepEqual(gate(text, [], undefined, "never"), []);
+  assert.deepEqual(ruleIds(gate(text, [], undefined, "sources")), ["degree-audit", "student-id"]);
+});

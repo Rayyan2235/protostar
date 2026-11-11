@@ -4,7 +4,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { allowed, reduce, type Action } from "./journey";
-import { gate } from "./dataRules";
+import { editFlags, gate } from "./dataRules";
 import { interviewTurn } from "./interviewer";
 import { provider } from "./llm";
 import { getSession, saveSession } from "./store";
@@ -88,7 +88,7 @@ export async function act(id: string, a: ClientAction): Promise<EngineResult | u
   const at = now();
   const action: Action | undefined =
     a.type === "answer" ? { type: "ANSWER", value: a.value, at }
-    : a.type === "edit" ? { type: "EDIT_SLOT", key: a.key, value: a.value, at }
+    : a.type === "edit" ? { type: "EDIT_SLOT", key: a.key, value: a.value, flagged: editFlags(a.key, a.value, s.pushback), at }
     : a.type === "resolve" ? { type: "RESOLVE_PUSHBACK", choice: a.choice, at }
     : a.type === "reset" ? { type: "RESET", at }
     : a.type === "choose_scope" ? { type: "CHOOSE_SCOPE", scope: a.scope, role: a.role, model: catalog()[a.role].model, price: catalog()[a.role].price, knobs: cleanKnobs(a.knobs), at }

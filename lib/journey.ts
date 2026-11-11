@@ -10,7 +10,7 @@
  * when the interview ends, and when the data gate blocks.
  */
 import type {
-  Decision, DecisionKind, InterviewTurn, Level, Pushback, PushbackChoice, Question, Session, Slot, SlotKey, Source, Step, Who,
+  Decision, DecisionKind, InterviewTurn, Level, Pushback, PushbackChoice, Question, ReviewDecision, Session, Slot, SlotKey, Source, Step, Who,
 } from "./types";
 import { SLOT_KEYS } from "./types";
 import { SCENARIO } from "./scenario";
@@ -42,9 +42,16 @@ export type Action =
   | { type: "SUBMIT_IDEA"; text: string; at: string }
   | { type: "APPLY_TURN"; prefilled: InterviewTurn["prefilled"]; sources: Source[]; question?: Question; by?: string; at: string }
   | { type: "ANSWER"; value: string; at: string }
-  | { type: "EDIT_SLOT"; key: SlotKey; value: string; at: string }
+  /** `flagged` = editFlags(key, value, s.pushback), filled by the engine. Non-empty = refused. */
+  | { type: "EDIT_SLOT"; key: SlotKey; value: string; flagged: Source[]; at: string }
   | { type: "RESOLVE_PUSHBACK"; choice: PushbackChoice | "keep"; at: string }
   | { type: "CHOOSE_SCOPE"; scope: ScopeKey; role: ModelRole; model: string; price?: Price; knobs: Knobs; at: string }
+  | { type: "CONTINUE_TO_BLUEPRINT"; at: string }
+  | { type: "REOPEN_SCOPE"; at: string }
+  /** The engine always passes a fresh id; the reducer keeps the existing one on resubmit. */
+  | { type: "SUBMIT_FOR_REVIEW"; reviewId: string; at: string }
+  | { type: "REVIEW_OPENED"; version: number; at: string }
+  | { type: "REVIEW_DECISION"; version: number; status: ReviewDecision; note?: string; at: string }
   | { type: "RESET"; at: string };
 
 export function initial(id: string, at: string): Session {
@@ -61,16 +68,24 @@ const slot = (s: Session, key: SlotKey) => s.slots.find((x) => x.key === key);
 const blocking = (s: Session) => !!s.pushback?.blocking;
 
 export function allowed(s: Session): Action["type"][] {
+  // Once submitted, a reviewer may have seen it: the log can't be wiped.
+  const reset: Action["type"][] = s.review ? [] : ["RESET"];
   switch (s.step) {
     case "idea":
-      return ["SUBMIT_IDEA", "RESET"];
+      return ["SUBMIT_IDEA", ...reset];
     case "interview":
-      if (blocking(s)) return ["RESOLVE_PUSHBACK", "RESET"];
-      return s.question ? ["ANSWER", "EDIT_SLOT", "RESET"] : ["APPLY_TURN", "EDIT_SLOT", "RESET"];
+      if (blocking(s)) return ["RESOLVE_PUSHBACK", ...reset];
+      return s.question ? ["ANSWER", "EDIT_SLOT", ...reset] : ["APPLY_TURN", "EDIT_SLOT", ...reset];
     case "scope":
-      return ["CHOOSE_SCOPE", "RESET"];
-    default:
-      return ["RESET"]; // later phases add their actions here
+      return ["CHOOSE_SCOPE", ...reset];
+    case "tests":
+      return ["CONTINUE_TO_BLUEPRINT", "REOPEN_SCOPE", ...reset]; // Phase 2b adds its run action here
+    case "blueprint":
+      return ["EDIT_SLOT", "REOPEN_SCOPE", "SUBMIT_FOR_REVIEW", ...reset];
+    case "review":
+      return ["REVIEW_OPENED", "REVIEW_DECISION"];
+    case "done":
+      return [];
   }
 }
 
@@ -141,7 +156,6 @@ function maybeFinish(s: Session, at: string): Session {
 }
 
 export function reduce(s: Session, a: Action): Session {
-  if (a.type === "RESET") return initial(s.id, a.at);
   if (!allowed(s).includes(a.type)) {
     return { ...s, log: say(s, a.at, "tool", `Blocked: "${a.type}" isn't possible at this step.`, "blocked") };
   }
@@ -181,6 +195,7 @@ export function reduce(s: Session, a: Action): Session {
           flaggedRules: [...(s.pushback?.flaggedRules ?? []), ...flagged.flatMap((f) => (f.ruleId ? [f.ruleId] : []))],
           options: ["selfreport", "route"],
           attempts: 0,
+          flaggedSources: [...(s.pushback?.flaggedSources ?? []), ...flagged],
         } satisfies Pushback;
         log = [...log, entry(a.at, "tool",
           `Flag: ${flagged.map((f) => `"${f.name}" is ${levelLabel(f.level)}`).join("; ")}. ${SCENARIO.pushback.limit}`, "flag")];
@@ -205,13 +220,22 @@ export function reduce(s: Session, a: Action): Session {
     }
 
     case "EDIT_SLOT": {
+      if (a.flagged.length) {
+        return {
+          ...s,
+          log: say(s, a.at, "tool",
+            `Edits can't include Level 3–4 data: ${a.flagged.map((f) => f.name).join(", ")}. ${SCENARIO.pushback.limit}`, "blocked"),
+        };
+      }
       const value = a.value.trim();
       if (!value) return s;
-      return maybeFinish({
+      const next: Session = {
         ...s,
         slots: upsertSlot(s.slots, { key: a.key, value, filledBy: "requester" }),
         log: say(s, a.at, "requester", `Edited ${a.key}: ${value}`, "edit"),
-      }, a.at);
+      };
+      // Only the interview can finish; at the blueprint an edit would otherwise jump to scope.
+      return s.step === "interview" ? maybeFinish(next, a.at) : next;
     }
 
     case "RESOLVE_PUSHBACK": {
@@ -247,6 +271,50 @@ export function reduce(s: Session, a: Action): Session {
         log: say(s, a.at, "requester", `Scope: ${sc.label} (risk ${sc.risk}) on ${a.price?.name ?? a.model}; ${cost}.`, "scope"),
       };
     }
+
+    case "CONTINUE_TO_BLUEPRINT":
+      return {
+        ...s, step: "blueprint",
+        log: say(s, a.at, "requester", "Continued to the blueprint. Tests not run: the test run needs live models.", "blueprint"),
+      };
+
+    case "REOPEN_SCOPE": // scope, model, knobs and estimate stay until re-chosen
+      return { ...s, step: "scope", log: say(s, a.at, "requester", "Reopened the scope.", "note") };
+
+    case "SUBMIT_FOR_REVIEW": {
+      const version = (s.review?.version ?? 0) + 1;
+      return {
+        ...s, step: "review",
+        review: { reviewId: s.review?.reviewId ?? a.reviewId, version, status: "pending", submittedAt: a.at },
+        log: say(s, a.at, "requester", `Submitted blueprint v${version} for review.`, "submit"),
+      };
+    }
+
+    case "REVIEW_OPENED": {
+      const r = s.review;
+      if (!r || a.version !== r.version || r.status !== "pending" || r.openedAt) return s;
+      return { ...s, review: { ...r, openedAt: a.at }, log: say(s, a.at, "reviewer", `Opened blueprint v${r.version}.`, "review") };
+    }
+
+    case "REVIEW_DECISION": {
+      const r = s.review;
+      if (!r || a.version !== r.version || r.status !== "pending") {
+        const latest = r ? `v${r.version} is ${r.status}` : "nothing was submitted";
+        return { ...s, log: say(s, a.at, "tool", `Blocked: decision on v${a.version}, but ${latest}.`, "blocked") };
+      }
+      const what = a.status === "approved" ? `Approved v${r.version}.`
+        : a.status === "changes" ? `Requested changes on v${r.version}: ${a.note ?? ""}`
+        : `Rejected v${r.version}: ${a.note ?? ""}`;
+      return {
+        ...s,
+        step: a.status === "changes" ? "blueprint" : "done",
+        review: { ...r, status: a.status, decidedAt: a.at, openedAt: r.openedAt ?? a.at, ...(a.note ? { note: a.note } : {}) },
+        log: say(s, a.at, "reviewer", what, "review"),
+      };
+    }
+
+    case "RESET":
+      return initial(s.id, a.at);
   }
   return s;
 }

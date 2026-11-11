@@ -38,7 +38,7 @@ const blueprint: Blueprint = {
     knobs: { studentsPerMonth: 2000, convsPerStudent: 2 },
     estimate: {
       scope: "guided", model: "Claude Haiku 4.5", conversations: 4000, inputMTok: 32, outputMTok: 4.8,
-      monthlyDollars: 56, tokensPerStudent: 18400, pricesAsOf: "2026-11-03",
+      monthlyDollars: 112, tokensPerStudent: 18400, pricesAsOf: "2026-11-03",
     },
   },
   knowledge: [{ title: "Finance, B.S.", url: "https://bulletins.psu.edu/finance", fetchedAt: "2026-11-03", level: 1 }],
@@ -65,7 +65,7 @@ test("Markdown says estimate, not run yet, template, and shows every slot label"
   const md = blueprintMarkdown(blueprint);
   assert.match(md, /estimate/i);
   assert.ok(md.includes(blueprint.costNote));
-  assert.ok(md.includes("$56/month"));
+  assert.ok(md.includes("$112/month"));
   assert.ok(md.includes("Not run yet"));
   assert.match(md, /template, not model-drafted/i);
   for (const label of Object.values(SLOT_LABELS)) assert.ok(md.includes(label), label);

@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { SLOT_KEYS, SLOT_LABELS, type Decision, type PushbackChoice, type Session, type SlotKey, type Source } from "@/lib/types";
+import { SLOT_KEYS, SLOT_LABELS, type Decision, type PushbackChoice, type Session, type SlotKey } from "@/lib/types";
+import { SourceItem } from "@/components/blueprint";
 import type { Catalog } from "@/lib/engine";
 import type { ClientAction, SessionResponse } from "@/lib/api";
 import { SCENARIO } from "@/lib/scenario";
@@ -255,20 +256,6 @@ function PushbackCard({ session, busy, onResolve }: { session: Session; busy: bo
   );
 }
 
-const LEVEL_STYLE = ["", "bg-emerald-100 text-emerald-900", "bg-sky-100 text-sky-900", "bg-red-100 text-red-900", "bg-red-200 text-red-950"];
-
-function SourceRow({ src }: { src: Source }) {
-  return (
-    <li className="flex items-start justify-between gap-2 text-sm">
-      <span className="text-zinc-800">{src.url ? <a href={src.url} target="_blank" rel="noreferrer" className="underline decoration-zinc-300">{src.name}</a> : src.name}</span>
-      <span className="flex shrink-0 gap-1">
-        <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${LEVEL_STYLE[src.level]}`}>L{src.level}</span>
-        <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-zinc-600" title={src.reason}>{src.decidedBy}</span>
-      </span>
-    </li>
-  );
-}
-
 function SpecPanel({ session, busy, onEdit }: { session?: Session; busy: boolean; onEdit: (k: SlotKey, v: string) => void }) {
   const [editing, setEditing] = useState<SlotKey>();
   const [draft, setDraft] = useState("");
@@ -316,7 +303,7 @@ function SpecPanel({ session, busy, onEdit }: { session?: Session; busy: boolean
       <div className="rounded-xl border border-zinc-200 bg-white p-4">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">Data sources</h2>
         {session?.sources.length ? (
-          <ul className="space-y-2">{session.sources.map((s) => <SourceRow key={s.name} src={s} />)}</ul>
+          <ul className="space-y-2">{session.sources.map((s) => <SourceItem key={s.name} src={s} />)}</ul>
         ) : (
           <p className="text-sm text-zinc-400">None yet.</p>
         )}

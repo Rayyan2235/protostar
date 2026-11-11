@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import type { Blueprint, BlueprintSlot, Level } from "@/lib/types";
+import type { Blueprint, BlueprintSlot, Level, Source } from "@/lib/types";
 import { aiStudioText, blueprintJson, blueprintMarkdown, exportFileName } from "@/lib/export";
 import { formatDollars } from "@/lib/scoper";
 
@@ -16,7 +16,28 @@ const RISK_STYLE = { Low: "bg-emerald-100 text-emerald-900", Medium: "bg-amber-1
 const day = (iso: string) => iso.slice(0, 10);
 
 export function LevelBadge({ level }: { level: Level }) {
-  return <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${LEVEL_STYLE[level]}`}>L{level}</span>;
+  return (
+    <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${LEVEL_STYLE[level]}`}>
+      <span aria-hidden="true">L{level}</span>
+      <span className="sr-only">Level {level}</span>
+    </span>
+  );
+}
+
+/** A data source: name (linked when public), level, who decided it, and why (visible, not hover-only). */
+export function SourceItem({ src }: { src: Source }) {
+  return (
+    <li className="text-sm">
+      <div className="flex items-start justify-between gap-2">
+        <span className="text-zinc-800">{src.url ? <a href={src.url} target="_blank" rel="noreferrer" className="underline decoration-zinc-300">{src.name}</a> : src.name}</span>
+        <span className="flex shrink-0 gap-1">
+          <LevelBadge level={src.level} />
+          <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-zinc-600">{src.decidedBy}</span>
+        </span>
+      </div>
+      <p className="mt-0.5 text-xs text-zinc-500">{src.reason}</p>
+    </li>
+  );
 }
 
 function Section({ title, aside, children }: { title: string; aside?: ReactNode; children: ReactNode }) {
@@ -80,16 +101,8 @@ export function BlueprintView({ blueprint: bp, audience }: { blueprint: Blueprin
       >
         <p className="text-sm text-zinc-800">{data.summary}</p>
         {data.sources.length > 0 && (
-          <ul className="mt-2 space-y-1.5">
-            {data.sources.map((s) => (
-              <li key={s.name} className="flex items-start justify-between gap-2 text-sm">
-                <span className="text-zinc-800">{s.url ? <a href={s.url} target="_blank" rel="noreferrer" className="underline decoration-zinc-300">{s.name}</a> : s.name}</span>
-                <span className="flex shrink-0 gap-1">
-                  <LevelBadge level={s.level} />
-                  <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-zinc-600" title={s.reason}>{s.decidedBy}</span>
-                </span>
-              </li>
-            ))}
+          <ul className="mt-2 space-y-2">
+            {data.sources.map((s) => <SourceItem key={s.name} src={s} />)}
           </ul>
         )}
         {data.pushback && (
@@ -175,8 +188,11 @@ function download(text: string, name: string, type: string) {
   const a = document.createElement("a");
   a.href = url;
   a.download = name;
+  document.body.appendChild(a);
   a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 0);
+  a.remove();
+  // Revoking at once can cancel the download in Safari; give it a moment to start.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 /** Markdown and JSON downloads, plus a copy-paste block for AI Studio. */

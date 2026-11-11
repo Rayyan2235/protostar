@@ -55,6 +55,16 @@ test("checker: inline type import, value import, side-effect, dynamic and requir
   assert.deepEqual(forbiddenIn(`import "./llm";\nimport type { Catalog } from "./engine";`), ["./llm"]);
 });
 
+test("checker: anything outside zod and the browser-safe files fails, in any path form", () => {
+  assert.deepEqual(forbiddenIn(`import Anthropic from "@anthropic-ai/sdk";`), ["@anthropic-ai/sdk"]);
+  assert.deepEqual(forbiddenIn(`import { complete } from "../lib/llm";`), ["../lib/llm"]);
+  assert.deepEqual(forbiddenIn(`import { getSession } from "./store.js";`), ["./store.js"]);
+  assert.deepEqual(forbiddenIn(`import { runChecks } from "./checks";`), ["./checks"], "a lib file on neither list");
+  assert.deepEqual(forbiddenIn(`import { useState } from "react";`), ["react"]);
+  assert.deepEqual(forbiddenIn(`import type { Anthropic } from "@anthropic-ai/sdk";`), [], "type-only from anything is fine");
+  assert.deepEqual(forbiddenIn(`import { SCENARIO } from "@/lib/scenario";\nimport { gate } from "../lib/dataRules.js";`), []);
+});
+
 test("checker: zod, other browser-safe modules and commented-out imports pass", () => {
   assert.deepEqual(forbiddenIn(`import { z } from "zod";\nimport { estimate } from "./scoper";`), []);
   assert.deepEqual(forbiddenIn(`// import { getSession } from "./store";\n/* import "./llm"; */`), []);

@@ -125,3 +125,19 @@ test("export file names", () => {
   assert.equal(exportFileName(blueprint, "md"), "protostar-blueprint-v1.md");
   assert.equal(exportFileName({ ...blueprint, version: 2, draft: true }, "json"), "protostar-blueprint-v2-draft.json");
 });
+
+test("instructions with backticks stay inside a longer fence", () => {
+  const text = "Answer plainly.\n```\n## Fake heading\n````";
+  const md = blueprintMarkdown({ ...blueprint, instructions: { text, draftedBy: "template" } });
+  const lines = md.split("\n");
+  const open = lines.indexOf("`````text");
+  assert.ok(open > 0, "fence is one backtick longer than the longest run (4)");
+  const close = lines.indexOf("`````", open + 1);
+  assert.ok(close > open + 4, "the fence closes after the instructions");
+  assert.deepEqual(lines.slice(open + 1, close), text.split("\n"));
+});
+
+test("plain instructions keep a three-backtick fence", () => {
+  const lines = blueprintMarkdown(blueprint).split("\n");
+  assert.ok(lines.includes("```text"));
+});

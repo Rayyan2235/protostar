@@ -109,6 +109,7 @@ test("as a sources answer, a comma starts a new clause: fails closed", () => {
 test("as a never answer, commas don't split the clause", () => {
   assert.deepEqual(editFlags("never", "Never ask for transcripts, degree audits or student IDs"), []);
   assert.deepEqual(editFlags("never", "It must never ask for, look up, or read transcripts"), []);
+  assert.deepEqual(editFlags("never", "Never read transcripts, degree audits"), []);
 });
 
 test("as a never answer, ; and : and but still split the clause", () => {

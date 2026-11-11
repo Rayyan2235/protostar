@@ -10,7 +10,7 @@
  * is used only for sources no rule matches, and the result says which one decided. The
  * pushback therefore never depends on a model run.
  */
-import type { Level, Pushback, Source } from "./types";
+import type { Level, Pushback, SlotKey, Source } from "./types";
 
 export interface Rule {
   id: string;
@@ -93,4 +93,16 @@ export function gate(
     out.push(src);
   }
   return out;
+}
+
+/**
+ * Level 3–4 hits for a requester edit (contract §6, edit gate).
+ * - A `sources` edit is scanned with no resolved-rule filter: resolving the pushback
+ *   never lets a record source back in through an edit.
+ * - Any other slot keeps the filter, so a resolved topic (e.g. a hand-off for
+ *   "anything about their degree audit") can be written down.
+ */
+export function editFlags(key: SlotKey, value: string, pushback?: Pushback): Source[] {
+  if (key === "sources") return scanText(value);
+  return gate(value, [], pushback).filter((s) => s.level >= 3);
 }

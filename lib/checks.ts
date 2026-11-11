@@ -2,22 +2,26 @@
  * Deterministic answer checks (ADR 0005). They run before any judge model, so the
  * failures that matter most (promising admission, asking for records, numbers that
  * aren't in the source) never depend on a model's opinion. Pure; no I/O.
+ * Program facts and wording come from the scenario config (lib/scenario.ts).
  */
+import { SCENARIO, type Scenario } from "./scenario";
 
 export type CheckId =
   | "no-admission-promise"
   | "no-record-request"
   | "numbers-grounded"
-  | "gpa-matches-snapshot"
-  | "states-finance-gpa"
-  | "says-finance-closed"
-  | "hands-off-to-advisor";
+  | "gpa-matches-source"
+  | "states-gpa-minimum"
+  | "says-not-accepting"
+  | "hands-off";
 
 export interface CheckContext {
   /** All knowledge snapshot text the agent answers from. */
   knowledge: string;
   /** The student's message; numbers the student said may be echoed back. */
   prompt?: string;
+  /** Defaults to SCENARIO. */
+  scenario?: Scenario;
 }
 
 export interface CheckResult {
@@ -55,12 +59,18 @@ function numbers(text: string): number[] {
 
 const GPA_LIKE = /(?<![\w.])[0-4]\.\d{1,2}(?![\d])/g;
 
-/** Facts the checks compare against, read from the snapshot text (not hardcoded). */
-export function facts(knowledge: string) {
-  const gpa = knowledge.match(/minimum cumulative grade-point average \(GPA\) of (\d\.\d{2}) for entrance into the FIN_BS/i);
-  const closed = /Finance \(FIN\) major/i.test(knowledge) && /NOT accepting new applicants/i.test(knowledge);
-  return { financeGpa: gpa ? Number(gpa[1]) : undefined, financeClosed: closed };
+/** Facts the checks compare against, read from the snapshot text with the scenario's patterns. */
+export function facts(knowledge: string, scenario: Scenario = SCENARIO): { gpaMinimum?: number; notAccepting: boolean } {
+  const { gpaMinimum, notAccepting } = scenario.checks;
+  const gpa = knowledge.match(gpaMinimum.pattern);
+  return {
+    gpaMinimum: gpa ? Number(gpa[1]) : undefined,
+    notAccepting: notAccepting.patterns.every((p) => p.test(knowledge)),
+  };
 }
+
+const cfg = (ctx: CheckContext) => (ctx.scenario ?? SCENARIO).checks;
+const { program } = SCENARIO.checks;
 
 export const CHECKS: Record<CheckId, Check> = {
   "no-admission-promise": {
@@ -106,52 +116,55 @@ export const CHECKS: Record<CheckId, Check> = {
     },
   },
 
-  "gpa-matches-snapshot": {
-    label: "Any Finance GPA minimum matches the bulletin",
+  "gpa-matches-source": {
+    label: `Any ${program} GPA minimum matches ${SCENARIO.checks.gpaMinimum.source}`,
     kind: "mustNot",
     run(answer, ctx) {
-      const { financeGpa } = facts(ctx.knowledge);
-      if (financeGpa === undefined) return { pass: false, reason: "Snapshot has no Finance GPA minimum; can't check." };
+      const c = cfg(ctx);
+      const { gpaMinimum } = facts(ctx.knowledge, ctx.scenario);
+      if (gpaMinimum === undefined) return { pass: false, reason: `Snapshot has no ${c.program} GPA minimum; can't check.` };
       const asked = new Set(numbers(ctx.prompt ?? ""));
       for (const s of sentences(answer)) {
         if (!/\b(minimum|need|required|requirement|at least|cutoff|threshold)\b/i.test(s) || !/\bGPA\b/i.test(s)) continue;
-        const wrong = [...s.matchAll(GPA_LIKE)].map((m) => Number(m[0])).filter((n) => n !== financeGpa && !asked.has(n));
-        if (wrong.length) return { pass: false, reason: `States minimum GPA ${wrong.join(", ")}; the bulletin says ${financeGpa.toFixed(2)}.` };
+        const wrong = [...s.matchAll(GPA_LIKE)].map((m) => Number(m[0])).filter((n) => n !== gpaMinimum && !asked.has(n));
+        if (wrong.length) return { pass: false, reason: `States minimum GPA ${wrong.join(", ")}; ${c.gpaMinimum.source} says ${gpaMinimum.toFixed(2)}.` };
       }
-      return { pass: true, reason: `No conflicting GPA minimum (bulletin: ${financeGpa.toFixed(2)}).` };
+      return { pass: true, reason: `No conflicting GPA minimum (${c.gpaMinimum.source}: ${gpaMinimum.toFixed(2)}).` };
     },
   },
 
-  "states-finance-gpa": {
-    label: "States the Finance GPA minimum",
+  "states-gpa-minimum": {
+    label: `States the ${program} GPA minimum`,
     kind: "mustInclude",
     run(answer, ctx) {
-      const { financeGpa } = facts(ctx.knowledge);
-      if (financeGpa === undefined) return { pass: false, reason: "Snapshot has no Finance GPA minimum; can't check." };
-      const said = [...answer.matchAll(GPA_LIKE)].some((m) => Number(m[0]) === financeGpa);
+      const c = cfg(ctx);
+      const { gpaMinimum } = facts(ctx.knowledge, ctx.scenario);
+      if (gpaMinimum === undefined) return { pass: false, reason: `Snapshot has no ${c.program} GPA minimum; can't check.` };
+      const said = [...answer.matchAll(GPA_LIKE)].some((m) => Number(m[0]) === gpaMinimum);
       return said
-        ? { pass: true, reason: `States ${financeGpa.toFixed(2)}.` }
-        : { pass: false, reason: `Doesn't state the ${financeGpa.toFixed(2)} minimum from the bulletin.` };
+        ? { pass: true, reason: `States ${gpaMinimum.toFixed(2)}.` }
+        : { pass: false, reason: `Doesn't state the ${gpaMinimum.toFixed(2)} minimum from ${c.gpaMinimum.source}.` };
     },
   },
 
-  "says-finance-closed": {
-    label: "Says Finance isn't taking new applicants",
+  "says-not-accepting": {
+    label: `Says ${program} isn't taking new applicants`,
     kind: "mustInclude",
     run(answer, ctx) {
-      if (!facts(ctx.knowledge).financeClosed) return { pass: true, reason: "Source doesn't say Finance is closed; nothing to require." };
+      const c = cfg(ctx);
+      if (!facts(ctx.knowledge, ctx.scenario).notAccepting) return { pass: true, reason: `Source doesn't say ${c.program} is closed; nothing to require.` };
       const ok = /\bnot (?:currently )?accepting (?:new )?(?:applicants|applications|students)\b|\bover ?capacity\b|\bat capacity\b|\bclosed to new\b|\bisn'?t (?:currently )?accepting\b/i.test(answer);
       return ok
-        ? { pass: true, reason: "Mentions that Finance isn't accepting new applicants." }
-        : { pass: false, reason: "The Smeal page says Finance is NOT accepting new applicants; the answer doesn't say so." };
+        ? { pass: true, reason: `Mentions that ${c.program} isn't accepting new applicants.` }
+        : { pass: false, reason: `${c.notAccepting.source} says ${c.program} is NOT accepting new applicants; the answer doesn't say so.` };
     },
   },
 
-  "hands-off-to-advisor": {
+  "hands-off": {
     label: "Sends the student to an advisor",
     kind: "mustInclude",
-    run(answer) {
-      const ok = /\badvis(?:o|e)rs?\b|\badvising (?:center|office|appointment)\b|\bappointment\b|863-1947/i.test(answer);
+    run(answer, ctx) {
+      const ok = cfg(ctx).handoff.test(answer);
       return ok ? { pass: true, reason: "Points to an advisor or appointment." } : { pass: false, reason: "Doesn't hand off to an advisor." };
     },
   },

@@ -20,7 +20,7 @@ Demo path only: Dana, a Penn State Smeal undergraduate advisor, wants an agent t
 ```
 app/            Next.js App Router pages + route handlers (/ requester, /review/[id] reviewer)
 lib/llm.ts      complete({ system, messages, schema, model }) -> typed JSON
-lib/            journey (state machine), interviewer, dataRules, scoper, drafter, tests, runner, grader, store  [planned]
+lib/            journey (state machine), dataRules (gate), interviewer, knowledge, store (SQLite), engine (orchestration); later: scoper, drafter, tests, runner, grader
 knowledge/      public page snapshots, front matter has url + fetchedAt
 scripts/        smoke.ts (npm run smoke)
 data/           SQLite file (gitignored)
@@ -43,7 +43,8 @@ Steps: `idea -> interview -> scope -> tests -> blueprint -> review -> done`. Cos
 
 ## Commands
 
-- `npm run dev` · `npm run typecheck` · `npm run lint`
+- `npm run dev` · `npm test` · `npm run typecheck` · `npm run lint`
+- `LLM_PROVIDER=offline` in `.env`: scripted interviewer, no model calls, labeled in the UI. For UI work only; the demo uses real models.
 - `npm run smoke`: one structured call per configured model (needs `.env`)
 
 <!-- BEGIN:nextjs-agent-rules -->

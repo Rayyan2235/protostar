@@ -1,6 +1,6 @@
 # Notice
 
-New part, built from Kiln tokens. A banner in the flow: `paper-raised`, with a `hairline` border and a coloured left rule.
+New part, built from Kiln tokens. A banner in the flow: `paper-raised`, with a `hairline` border (a full `danger` border for danger). The tone shows in the title's ink.
 
 Why: pushback, change requests, approvals and errors all need one consistent, calm shape.
 
@@ -13,3 +13,4 @@ Why: pushback, change requests, approvals and errors all need one consistent, ca
 * Meaning never rests on colour alone: the title or the text says it in words.
 * A `danger` notice is `role="alert"`. The other tones are `role="status"`.
 * Don't nest it in a card. Use one Notice, then space.
+* No side tab: a thick coloured edge on one side is a well-known tell of AI-made UI.

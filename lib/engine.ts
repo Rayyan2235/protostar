@@ -54,12 +54,25 @@ export function mode(): string {
   }
 }
 
-/** If the requester said something the tool hasn't processed, run one interviewer turn. */
-async function advance(s: Session): Promise<EngineResult> {
+/**
+ * The slot the pending text answered, when the question is no longer known (retry): the
+ * one requester-filled slot holding that text. None or a tie: undefined, so the text is
+ * scanned with commas as clause boundaries (fails closed). The idea has no slot.
+ */
+export function pendingSlot(s: Session): SlotKey | undefined {
+  const hits = s.slots.filter((x) => x.filledBy === "requester" && x.value === s.pending);
+  return hits.length === 1 ? hits[0].key : undefined;
+}
+
+/**
+ * If the requester said something the tool hasn't processed, run one interviewer turn.
+ * `slot` is the slot the pending text answers; the data gate scans the never slot differently.
+ */
+async function advance(s: Session, slot = pendingSlot(s)): Promise<EngineResult> {
   if (s.pending === undefined || !allowed(s).includes("APPLY_TURN")) return { session: s };
   try {
     const { turn, model } = await interviewTurn(s, s.pending);
-    const sources = gate(s.pending, turn.sources, s.pushback);
+    const sources = gate(s.pending, turn.sources, s.pushback, slot);
     const next = reduce(s, {
       type: "APPLY_TURN", prefilled: turn.prefilled, sources, question: turn.nextQuestion, by: model, at: now(),
     });
@@ -78,7 +91,7 @@ export async function startSession(idea: string): Promise<EngineResult> {
     { type: "SUBMIT_IDEA", text: idea, at },
   );
   saveSession(s);
-  return advance(s);
+  return advance(s, undefined); // the idea answers no slot
 }
 
 export async function act(id: string, a: ClientAction): Promise<EngineResult | undefined> {
@@ -96,5 +109,5 @@ export async function act(id: string, a: ClientAction): Promise<EngineResult | u
 
   const next = action ? reduce(s, action) : s;
   if (next !== s) saveSession(next); // persist the human's input before any model call
-  return advance(next);
+  return advance(next, a.type === "answer" ? s.question?.slot : pendingSlot(next));
 }

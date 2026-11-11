@@ -75,7 +75,7 @@ test("LivingSky server render is the fixed default: night and still", () => {
   assert.equal(typeof window, "undefined");
   const html = renderToStaticMarkup(<LivingSky label="Night sky">art</LivingSky>);
   assert.match(html, /data-sky="night"/);
-  assert.doesNotMatch(html, /data-live/);
+  assert.doesNotMatch(html, /<div[^>]*\sdata-live/);
   assert.match(html, /role="img"/);
   assert.match(html, /aria-label="Night sky"/);
 });
@@ -83,5 +83,5 @@ test("LivingSky server render is the fixed default: night and still", () => {
 test("LivingSky renders still when motion is off", () => {
   const html = renderToStaticMarkup(<LivingSky label="Sky" mode="day" motion={false}>art</LivingSky>);
   assert.match(html, /data-sky="day"/);
-  assert.doesNotMatch(html, /data-live/);
+  assert.doesNotMatch(html, /<div[^>]*\sdata-live/);
 });

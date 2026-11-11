@@ -45,15 +45,15 @@ export function dataVerdict(s: Session): DataVerdict {
   return {
     maxLevel, allowed, sources: s.sources,
     pushback: { flagged, choice: pb.choice, title: option.title, rule: option.rule },
-    summary: `${base} Flagged ${named}; you chose ${letter}.`,
+    summary: `${base} Flagged ${named}; the requester chose ${letter}.`,
   };
 }
 
 /** "Mentions {rule labels}. The data choice applies: {option title}." once the pushback is resolved. */
-function noteFor(s: Session, value: string): string | undefined {
+function noteFor(s: Session, key: SlotKey, value: string): string | undefined {
   const choice = s.pushback?.choice;
   if (!choice || !value) return undefined;
-  const hits = scanText(value);
+  const hits = scanText(value, key);
   if (!hits.length) return undefined;
   return `Mentions ${hits.map((h) => h.name).join(", ")}. The data choice applies: ${SCENARIO.pushback.options[choice].title}.`;
 }
@@ -85,7 +85,7 @@ export function buildBlueprint(
   const spec: BlueprintSlot[] = SLOT_KEYS.map((key) => {
     const slot = s.slots.find((x) => x.key === key);
     const value = slot?.value ?? "";
-    const note = noteFor(s, value);
+    const note = noteFor(s, key, value);
     return {
       key, label: SLOT_LABELS[key], value, filledBy: slot?.filledBy ?? "requester",
       ...(slot?.confidence !== undefined ? { confidence: slot.confidence } : {}),

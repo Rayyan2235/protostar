@@ -1,13 +1,55 @@
 @import "tailwindcss";
+/* Unlayered on purpose: these :root declarations must win over Tailwind's theme layer (see below). */
+@import "./tokens.css";
 
+/*
+ * Tailwind maps Kiln tokens to utilities: bg-paper, text-ink, border-hairline, font-display,
+ * shadow-sheet, ease-out... Colours, fonts, shadows and easings only for now (ADR 0012).
+ * Spacing and radius are NOT mapped yet: Kiln's names collide with Tailwind's defaults and would
+ * resize unmigrated screens. Migrated code uses p-(--space-3), rounded-(--radius-md),
+ * duration-(--dur-quick) until the defaults are reset at the end of the migration.
+ *
+ * Where a Kiln name equals a Tailwind theme name (--font-*, --shadow-*, --ease-*), Tailwind also
+ * writes "--x: var(--x)" into its theme layer. tokens.css is unlayered, so its value wins.
+ */
 @theme inline {
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-paper: var(--paper);
+  --color-paper-raised: var(--paper-raised);
+  --color-paper-sunk: var(--paper-sunk);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-muted: var(--ink-muted);
+  --color-stone: var(--stone);
+  --color-hairline: var(--hairline);
+  --color-accent: var(--accent);
+  --color-accent-fill: var(--accent-fill);
+  --color-link: var(--link);
+  --color-signal: var(--signal);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
+  --color-button-bg: var(--button-bg);
+  --color-button-ink: var(--button-ink);
+  --color-on-art: var(--on-art);
+  --color-scrim: var(--scrim);
+
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+  --font-mono: var(--font-mono);
+
+  --shadow-float: var(--shadow-float);
+  --shadow-sheet: var(--shadow-sheet);
+
+  --ease-out: var(--ease-out);
+  --ease-inout: var(--ease-inout);
 }
 
-/* Light only until the Phase 4 polish pass. */
+/* Kiln §4: Fraunces with the SOFT axis at 100, roman only. */
+.display-xl, .display, .heading-1, .heading-2, .font-display {
+  font-variation-settings: "SOFT" 100;
+}
+
 body {
-  background: #f8f8f9;
-  color: #18181b;
-  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
 }

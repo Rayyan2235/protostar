@@ -1,7 +1,14 @@
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { getDecisions, getSession, resetDbForTests, saveSession } from "./store";
+import Database from "better-sqlite3";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import {
+  findSessionIdByReviewId, getBlueprint, getDecisions, getRounds, getSession, resetDbForTests, saveReviewEvent, saveSession, saveSubmission,
+} from "./store";
 import { initial, reduce } from "./journey";
+import type { Blueprint, Session } from "./types";
 
 const at = "2026-11-10T00:00:00.000Z";
 beforeEach(() => resetDbForTests());
@@ -26,4 +33,64 @@ test("reset replaces the stored log", () => {
 
 test("unknown session is undefined", () => {
   assert.equal(getSession("nope"), undefined);
+});
+
+// --- Phase 3: frozen blueprints and review rounds (contract §7) ----------------------------
+
+const bpFor = (s: Session, version: number): Blueprint =>
+  ({ version, draft: false, builtAt: at, title: "T", idea: s.idea, log: s.log } as unknown as Blueprint);
+
+function submitted(id = "sub", reviewId = "rev-1"): Session {
+  const s = reduce(initial(id, at), { type: "SUBMIT_IDEA", text: "Finance helper", at });
+  return { ...s, step: "review", review: { reviewId, version: 1, status: "pending", submittedAt: at } };
+}
+
+test("saveSubmission writes the session, one frozen blueprint and one pending round", () => {
+  const s = submitted();
+  saveSubmission(s, bpFor(s, 1));
+  assert.deepEqual(getSession("sub"), s);
+  assert.deepEqual(getBlueprint("sub", 1), bpFor(s, 1));
+  assert.equal(findSessionIdByReviewId("rev-1"), "sub");
+  assert.deepEqual(getRounds("sub"), [{ version: 1, submittedAt: at, status: "pending" }]);
+  assert.equal(getBlueprint("sub", 2), undefined);
+  assert.equal(findSessionIdByReviewId("nope"), undefined);
+});
+
+test("a decided round has openedAt, decidedAt and minutes; a second version adds a round", () => {
+  const s = submitted();
+  saveSubmission(s, bpFor(s, 1));
+  const decided: Session = {
+    ...s, step: "blueprint",
+    review: { ...s.review!, status: "changes", openedAt: "2026-11-10T00:00:00.000Z", decidedAt: "2026-11-10T00:04:30.000Z", note: "More." },
+  };
+  saveReviewEvent(decided);
+  assert.deepEqual(getRounds("sub"), [{
+    version: 1, submittedAt: at, status: "changes", openedAt: "2026-11-10T00:00:00.000Z",
+    decidedAt: "2026-11-10T00:04:30.000Z", note: "More.", minutes: 4.5,
+  }]);
+  const v2: Session = { ...decided, step: "review", review: { reviewId: "rev-1", version: 2, status: "pending", submittedAt: "2026-11-10T01:00:00.000Z" } };
+  saveSubmission(v2, bpFor(v2, 2));
+  const rounds = getRounds("sub");
+  assert.deepEqual(rounds.map((r) => [r.version, r.status]), [[1, "changes"], [2, "pending"]]);
+  assert.equal(rounds[1].minutes, undefined);
+  assert.deepEqual(getBlueprint("sub", 1), bpFor(s, 1), "v1 stays frozen");
+});
+
+test("an old database file with only the sessions and decisions tables still opens", () => {
+  const file = path.join(mkdtempSync(path.join(tmpdir(), "protostar-")), "old.db");
+  const old = new Database(file);
+  old.exec(`
+    CREATE TABLE sessions (id TEXT PRIMARY KEY, json TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE decisions (session_id TEXT NOT NULL REFERENCES sessions(id), seq INTEGER NOT NULL, at TEXT NOT NULL,
+      who TEXT NOT NULL CHECK (who IN ('requester', 'tool', 'reviewer')), what TEXT NOT NULL, PRIMARY KEY (session_id, seq));
+  `);
+  old.prepare("INSERT INTO sessions (id, json, updated_at) VALUES (?, ?, ?)").run("legacy", JSON.stringify(initial("legacy", at)), at);
+  old.close();
+  resetDbForTests(file);
+  assert.equal(getSession("legacy")?.id, "legacy");
+  assert.deepEqual(getRounds("legacy"), []);
+  const s = submitted("legacy");
+  saveSubmission(s, bpFor(s, 1));
+  assert.equal(getRounds("legacy").length, 1);
+  resetDbForTests();
 });

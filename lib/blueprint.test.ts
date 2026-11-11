@@ -61,6 +61,7 @@ test("Dana's data verdict: allowed, Level 1, flagged audit kept with level and r
   assert.equal(d.pushback?.rule, SCENARIO.pushback.options.selfreport.rule);
   assert.match(d.summary, /Level 3, by rule/);
   assert.match(d.summary, /^All sources are Level 1–2\./);
+  assert.equal(d.summary, `All sources are Level 1–2. Flagged "${audit.name}" (Level 3, by rule); the requester chose (a).`);
 });
 
 test("an old session without flaggedSources shows names only", () => {
@@ -110,6 +111,16 @@ test("a slot that mentions resolved record data keeps its text and gets a note",
   assert.equal(handoff.value, said);
   assert.equal(handoff.note, `Mentions Degree audits. The data choice applies: ${SCENARIO.pushback.options.selfreport.title}.`);
   assert.ok(spec.filter((x) => x.key !== "handoff").every((x) => x.note === undefined));
+});
+
+test("slot notes scan with the slot's own clause rules: a never list of records gets no note", () => {
+  const s = dana();
+  const said = "Never ask for transcripts, degree audits or student IDs";
+  const spec = bp({ ...s, slots: s.slots.map((x) => (x.key === "never" ? { ...x, value: said } : x)) }).spec;
+  assert.equal(spec.find((x) => x.key === "never")?.note, undefined);
+  const asSources = bp({ ...s, slots: s.slots.map((x) => (x.key === "sources" ? { ...x, value: said } : x)) }).spec;
+  assert.equal(asSources.find((x) => x.key === "sources")?.note,
+    `Mentions Degree audits, Student IDs. The data choice applies: ${SCENARIO.pushback.options.selfreport.title}.`);
 });
 
 test("scope block: label, risk, desc, model name, knobs, estimate from list prices", () => {

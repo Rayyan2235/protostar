@@ -9,7 +9,8 @@
     "lint": "eslint",
     "smoke": "tsx --env-file-if-exists=.env scripts/smoke.ts",
     "typecheck": "next typegen && tsc --noEmit",
-    "test": "tsx --test \"lib/**/*.test.ts\""
+    "test": "tsx --test \"lib/**/*.test.ts\"",
+    "report": "tsx --env-file-if-exists=.env scripts/session-report.ts"
   },
   "dependencies": {
     "@anthropic-ai/foundry-sdk": "^1.1.1",

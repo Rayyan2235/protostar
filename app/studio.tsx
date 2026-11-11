@@ -1,34 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Decision, Session, SlotKey, Source } from "@/lib/types";
+import { SLOT_KEYS, SLOT_LABELS, type Decision, type PushbackChoice, type Session, type SlotKey, type Source } from "@/lib/types";
 import type { Catalog } from "@/lib/engine";
+import type { ClientAction, SessionResponse } from "@/lib/api";
+import { SCENARIO } from "@/lib/scenario";
 import { ScopePicker, ScopeSummary } from "./scope";
 
-type ApiResult = { session?: Session; error?: string; mode?: string; catalog?: Catalog };
-
-const SLOT_LABELS: Record<SlotKey, string> = {
-  users: "Who uses it",
-  top: "Top questions",
-  never: "Must never",
-  examples: "Great vs. bad answer",
-  sources: "Reads from",
-  handoff: "Hands off when",
-};
-const SLOT_ORDER: SlotKey[] = ["users", "top", "never", "examples", "sources", "handoff"];
-
-const PUSHBACK_RULES = {
-  selfreport: "Never ask for, read, or store student records. Use only the GPA and credits the student states in the chat.",
-  route: "Never read pasted records. Questions about a specific student's record go to an advising appointment.",
-} as const;
+type ResolveChoice = PushbackChoice | "keep";
 
 const EXAMPLE_IDEA = "Something that helps students figure out if they can switch into Finance.";
 
-async function call(path: string, body?: unknown): Promise<ApiResult> {
+async function call(path: string, body?: unknown): Promise<SessionResponse> {
   const res = await fetch(path, body === undefined ? undefined : {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
   });
-  const data = (await res.json().catch(() => ({}))) as ApiResult;
+  const data = (await res.json().catch(() => ({}))) as SessionResponse;
   if (!res.ok && !data.error) data.error = `Request failed (${res.status})`;
   return data;
 }
@@ -41,7 +28,7 @@ export default function Studio() {
   const [error, setError] = useState<string>();
   const [text, setText] = useState("");
 
-  const apply = useCallback((r: ApiResult) => {
+  const apply = useCallback((r: SessionResponse) => {
     if (r.session) {
       setSession(r.session);
       const url = new URL(window.location.href);
@@ -58,7 +45,7 @@ export default function Studio() {
     if (id) call(`/api/sessions/${id}`).then(apply);
   }, [apply]);
 
-  const run = async (p: Promise<ApiResult>) => {
+  const run = async (p: Promise<SessionResponse>) => {
     setBusy(true);
     try {
       apply(await p);
@@ -70,7 +57,7 @@ export default function Studio() {
   };
 
   const start = (idea: string) => run(call("/api/sessions", { idea })).then(() => setText(""));
-  const send = (body: unknown) => session && run(call(`/api/sessions/${session.id}`, body));
+  const send = (a: ClientAction) => session && run(call(`/api/sessions/${session.id}`, a));
   const answer = (value: string) => {
     if (!value.trim()) return;
     setText("");
@@ -208,7 +195,7 @@ function Transcript({ log }: { log: Decision[] }) {
 
 function Composer({ session, busy, text, setText, onAnswer, onResolve }: {
   session: Session; busy: boolean; text: string; setText: (s: string) => void;
-  onAnswer: (s: string) => void; onResolve: (c: "selfreport" | "route" | "keep") => void;
+  onAnswer: (s: string) => void; onResolve: (c: ResolveChoice) => void;
 }) {
   if (session.pushback?.blocking) return <PushbackCard session={session} busy={busy} onResolve={onResolve} />;
   if (session.step === "scope") return <p className="text-sm text-zinc-500">Loading scope options…</p>;
@@ -241,7 +228,7 @@ function Composer({ session, busy, text, setText, onAnswer, onResolve }: {
   );
 }
 
-function PushbackCard({ session, busy, onResolve }: { session: Session; busy: boolean; onResolve: (c: "selfreport" | "route" | "keep") => void }) {
+function PushbackCard({ session, busy, onResolve }: { session: Session; busy: boolean; onResolve: (c: ResolveChoice) => void }) {
   const pb = session.pushback!;
   const names = pb.flagged.join(", ");
   return (
@@ -251,23 +238,19 @@ function PushbackCard({ session, busy, onResolve }: { session: Session; busy: bo
         That counts as Penn State Level 3–4 data (FERPA). AI Studio agents may only use Level 1–2 data. How should the agent work instead?
       </p>
       <div className="mt-3 grid gap-2 sm:grid-cols-2">
-        <button disabled={busy} onClick={() => onResolve("selfreport")} className="rounded-lg border border-zinc-300 bg-white p-3 text-left hover:border-indigo-400 disabled:opacity-50">
-          <span className="block font-medium text-zinc-900">(a) Students tell it their GPA and credits</span>
-          <span className="block text-sm text-zinc-600">Nothing is read or stored. Answers say they depend on what the student reported.</span>
-        </button>
-        <button disabled={busy} onClick={() => onResolve("route")} className="rounded-lg border border-zinc-300 bg-white p-3 text-left hover:border-indigo-400 disabled:opacity-50">
-          <span className="block font-medium text-zinc-900">(b) No records at all</span>
-          <span className="block text-sm text-zinc-600">Questions about a specific record go to an advising appointment.</span>
-        </button>
+        {pb.options.map((choice) => {
+          const opt = SCENARIO.pushback.options[choice];
+          return (
+            <button key={choice} disabled={busy} onClick={() => onResolve(choice)} className="rounded-lg border border-zinc-300 bg-white p-3 text-left hover:border-indigo-400 disabled:opacity-50">
+              <span className="block font-medium text-zinc-900">{opt.title}</span>
+              <span className="block text-sm text-zinc-600">{opt.detail}</span>
+            </button>
+          );
+        })}
       </div>
       <button disabled={busy} onClick={() => onResolve("keep")} className="mt-3 text-sm text-red-900 underline disabled:opacity-50">
         Keep it anyway
       </button>
-      {pb.attempts > 0 && (
-        <p className="mt-2 text-sm text-red-900">
-          That would need a data steward and a Platform Agent review, so this self-serve flow can&apos;t continue with it. Pick (a) or (b).
-        </p>
-      )}
     </div>
   );
 }
@@ -296,7 +279,7 @@ function SpecPanel({ session, busy, onEdit }: { session?: Session; busy: boolean
       <div className="rounded-xl border border-zinc-200 bg-white p-4">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">Spec so far</h2>
         <dl className="space-y-3">
-          {SLOT_ORDER.map((key) => {
+          {SLOT_KEYS.map((key) => {
             const slot = session?.slots.find((s) => s.key === key);
             return (
               <div key={key}>
@@ -339,7 +322,7 @@ function SpecPanel({ session, busy, onEdit }: { session?: Session; busy: boolean
         )}
         {session?.pushback?.choice && (
           <p className="mt-3 rounded-lg bg-zinc-50 p-2 text-xs text-zinc-700">
-            <span className="font-medium">Rule added by your choice:</span> {PUSHBACK_RULES[session.pushback.choice]}
+            <span className="font-medium">Rule added by your choice:</span> {SCENARIO.pushback.options[session.pushback.choice].rule}
           </p>
         )}
         <p className="mt-3 text-xs text-zinc-400">Levels: Penn State data classes. “rule” = decided by a fixed table; “model” = classified by AI because no rule matched.</p>

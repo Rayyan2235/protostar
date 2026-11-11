@@ -49,6 +49,8 @@ test("checker: inline type import, value import, side-effect, dynamic and requir
   assert.deepEqual(forbiddenIn(`import "./llm";`), ["./llm"]);
   assert.deepEqual(forbiddenIn(`const k = await import("./knowledge");`), ["./knowledge"]);
   assert.deepEqual(forbiddenIn(`const fs = require("fs");`), ["fs"]);
+  assert.deepEqual(forbiddenIn("const s = await import(`./store`);"), ["./store"], "backtick dynamic import");
+  assert.deepEqual(forbiddenIn("const db = require(`better-sqlite3`);"), ["better-sqlite3"]);
   assert.deepEqual(forbiddenIn(`import { randomUUID } from "node:crypto";`), ["node:crypto"]);
   assert.deepEqual(forbiddenIn(`import Database from "better-sqlite3";`), ["better-sqlite3"]);
   assert.deepEqual(forbiddenIn(`export { interviewTurn } from "./interviewer";`), ["./interviewer"]);

@@ -1,7 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { allowed, initial, missingSlots, nextQuestion, reduce, MAX_QUESTIONS, type Action } from "./journey";
-import type { Session, Source } from "./types";
+import * as journey from "./journey";
+import { allowed, initial, levelLabel, missingSlots, nextQuestion, reduce, MAX_QUESTIONS, type Action } from "./journey";
+import { SCENARIO } from "./scenario";
+import { SLOT_KEYS, type Session, type Source } from "./types";
 
 const at = "2026-11-10T00:00:00.000Z";
 const run = (s: Session, ...actions: Action[]) => actions.reduce(reduce, s);
@@ -181,4 +183,26 @@ test("every decision is logged with who made it", () => {
   const s = run(started(), turn({ sources: [audit] }), { type: "RESOLVE_PUSHBACK", choice: "route", at });
   const whos = new Set(s.log.map((d) => d.who));
   assert.ok(whos.has("requester") && whos.has("tool"));
+});
+
+test("pushback text comes from SCENARIO, byte for byte", () => {
+  const flagged = run(started(), turn({ sources: [audit] }));
+  const flagLine = flagged.log.at(-1)!;
+  assert.equal(flagLine.what, `Flag: "${audit.name}" is ${levelLabel(3)}. ${SCENARIO.pushback.limit}`);
+
+  const kept = reduce(flagged, { type: "RESOLVE_PUSHBACK", choice: "keep", at });
+  assert.equal(kept.log.at(-1)!.what, SCENARIO.pushback.keepAnywayReply);
+
+  const a = reduce(flagged, { type: "RESOLVE_PUSHBACK", choice: "selfreport", at });
+  assert.deepEqual(a.sources.at(-1), SCENARIO.pushback.selfReportSource);
+  assert.ok(a.log.some((d) => d.kind === "resolve" && d.what === SCENARIO.pushback.options.selfreport.logLine));
+  const b = reduce(flagged, { type: "RESOLVE_PUSHBACK", choice: "route", at });
+  assert.ok(b.log.some((d) => d.kind === "resolve" && d.what === SCENARIO.pushback.options.route.logLine));
+});
+
+test("journey keeps no second copy of the slot keys or pushback text", () => {
+  for (const name of ["SLOT_ORDER", "PUSHBACK_RULES", "SELF_REPORT_SOURCE"]) {
+    assert.equal(name in journey, false, `journey.ts still exports ${name}`);
+  }
+  assert.deepEqual(missingSlots(started()), [...SLOT_KEYS], "interview order is SLOT_KEYS");
 });

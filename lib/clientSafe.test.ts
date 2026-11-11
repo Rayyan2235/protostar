@@ -14,8 +14,6 @@ import { join } from "node:path";
 const BROWSER_SAFE = [
   "types.ts", "scenario.ts", "api.ts", "scoper.ts", "journey.ts", "dataRules.ts", "blueprint.ts", "export.ts",
 ];
-/** Not written yet; checked automatically once they exist. */
-const LATER = new Set(["blueprint.ts", "export.ts"]);
 const ALLOWED = new Set(["zod", ...BROWSER_SAFE.map((f) => `./${f.replace(/\.ts$/, "")}`)]);
 
 function isForbidden(spec: string): boolean {
@@ -75,8 +73,7 @@ test("checker: zod, other browser-safe modules and commented-out imports pass", 
 
 for (const file of BROWSER_SAFE) {
   const path = join(process.cwd(), "lib", file);
-  const later = LATER.has(file) && !existsSync(path);
-  test(`lib/${file} imports no server-only module at runtime`, { skip: later && "lands in a later step" }, () => {
+  test(`lib/${file} imports no server-only module at runtime`, () => {
     assert.ok(existsSync(path), `lib/${file} is missing`);
     assert.deepEqual(forbiddenIn(readFileSync(path, "utf8")), []);
   });

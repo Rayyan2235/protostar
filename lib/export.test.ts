@@ -31,7 +31,7 @@ const blueprint: Blueprint = {
       title: "(a) Students tell it their GPA and credits",
       rule: "Never ask for, read, or store student records.",
     },
-    summary: "All sources are Level 1–2. Flagged \"Students paste their degree audit\" (Level 3, by rule); you chose (a).",
+    summary: "All sources are Level 1–2. Flagged \"Students paste their degree audit\" (Level 3, by rule); the requester chose (a).",
   },
   scope: {
     key: "guided", label: "Guided eligibility check", risk: "Medium", desc: "Walks the entrance rules.", model: "Claude Haiku 4.5",

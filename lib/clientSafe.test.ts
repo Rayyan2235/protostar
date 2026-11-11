@@ -1,13 +1,14 @@
 /**
  * Browser-safe modules (contract §0). app/** client code may import these, so they must
- * not pull server code into the client bundle. A server module may be imported only with
- * the statement form `import type { … } from`; `import { type X } from` still counts as a
- * runtime import, because the statement survives compilation.
+ * not pull server code into the client bundle: at runtime they import nothing except zod
+ * and each other (an allowlist, so a new server dependency fails without a list update).
+ * Anything else may be imported only with the statement form `import type { … } from`;
+ * `import { type X } from` still counts as a runtime import, because the statement
+ * survives compilation.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
-import { builtinModules } from "node:module";
 import { join } from "node:path";
 
 const BROWSER_SAFE = [
@@ -15,12 +16,11 @@ const BROWSER_SAFE = [
 ];
 /** Not written yet; checked automatically once they exist. */
 const LATER = new Set(["blueprint.ts", "export.ts"]);
-const SERVER_ONLY = ["engine", "store", "llm", "knowledge", "interviewer"];
+const ALLOWED = new Set(["zod", ...BROWSER_SAFE.map((f) => `./${f.replace(/\.ts$/, "")}`)]);
 
 function isForbidden(spec: string): boolean {
-  if (spec.startsWith("node:") || spec === "better-sqlite3" || builtinModules.includes(spec)) return true;
-  const local = spec.replace(/^@\/lib\//, "./").replace(/\.tsx?$/, "");
-  return SERVER_ONLY.some((m) => local === `./${m}`);
+  const local = spec.replace(/^(?:@\/lib\/|\.\.\/lib\/)/, "./").replace(/\.(?:tsx?|js)$/, "");
+  return !ALLOWED.has(local);
 }
 
 /** Module specifiers the file loads at runtime (type-only statements excluded). */

@@ -3,24 +3,23 @@
  * Route handlers call these; nothing here is UI.
  */
 import { randomUUID } from "node:crypto";
+import { ReviewActionSchema, type ClientAction, type ReviewResponse } from "./api";
+import { buildBlueprint } from "./blueprint";
 import { allowed, reduce, type Action } from "./journey";
 import { editFlags, gate } from "./dataRules";
 import { interviewTurn } from "./interviewer";
+import { loadKnowledge } from "./knowledge";
 import { provider } from "./llm";
-import { getSession, saveSession } from "./store";
-import { cleanKnobs, priceFor, type Knobs, type ModelRole, type Price, type ScopeKey } from "./scoper";
-import type { PushbackChoice, Session, SlotKey } from "./types";
-
-export type ClientAction =
-  | { type: "answer"; value: string }
-  | { type: "edit"; key: SlotKey; value: string }
-  | { type: "resolve"; choice: PushbackChoice | "keep" }
-  | { type: "choose_scope"; scope: ScopeKey; role: ModelRole; knobs: Knobs }
-  | { type: "retry" }
-  | { type: "reset" };
+import {
+  findSessionIdByReviewId, getBlueprint, getRounds, getSession, saveReviewEvent, saveSession, saveSubmission,
+} from "./store";
+import { cleanKnobs, priceFor, type ModelRole, type Price } from "./scoper";
+import type { Blueprint, KnowledgeRef, Level, ReviewView, Session, SlotKey } from "./types";
 
 export interface EngineResult {
   session: Session;
+  /** Draft at the blueprint step; the frozen latest version at review and done. */
+  blueprint?: Blueprint;
   /** Set when the model call failed; the session is saved and `retry` continues. */
   error?: string;
 }
@@ -91,7 +90,7 @@ export async function startSession(idea: string): Promise<EngineResult> {
     { type: "SUBMIT_IDEA", text: idea, at },
   );
   saveSession(s);
-  return advance(s, undefined); // the idea answers no slot
+  return withBlueprint(await advance(s, undefined)); // the idea answers no slot
 }
 
 export async function act(id: string, a: ClientAction): Promise<EngineResult | undefined> {
@@ -105,9 +104,87 @@ export async function act(id: string, a: ClientAction): Promise<EngineResult | u
     : a.type === "resolve" ? { type: "RESOLVE_PUSHBACK", choice: a.choice, at }
     : a.type === "reset" ? { type: "RESET", at }
     : a.type === "choose_scope" ? { type: "CHOOSE_SCOPE", scope: a.scope, role: a.role, model: catalog()[a.role].model, price: catalog()[a.role].price, knobs: cleanKnobs(a.knobs), at }
+    : a.type === "continue" ? { type: "CONTINUE_TO_BLUEPRINT", at }
+    : a.type === "reopen_scope" ? { type: "REOPEN_SCOPE", at }
+    : a.type === "submit" ? { type: "SUBMIT_FOR_REVIEW", reviewId: randomUUID(), at }
     : undefined;
 
   const next = action ? reduce(s, action) : s;
+  if (next.step === "review" && s.step !== "review" && next.review) {
+    // Freeze exactly what the reviewer will see (ADR 0011).
+    saveSubmission(next, buildBlueprint(next, knowledgeRefs(), at, { version: next.review.version, draft: false }), at);
+    return withBlueprint({ session: next });
+  }
   if (next !== s) saveSession(next); // persist the human's input before any model call
-  return advance(next, a.type === "answer" ? s.question?.slot : pendingSlot(next));
+  return withBlueprint(await advance(next, a.type === "answer" ? s.question?.slot : pendingSlot(next)));
+}
+
+/** Knowledge snapshots as the blueprint lists them. */
+function knowledgeRefs(): KnowledgeRef[] {
+  return loadKnowledge().map((p) => ({ title: p.title, url: p.url, fetchedAt: p.fetchedAt, level: p.dataLevel as Level }));
+}
+
+/** Live draft at the blueprint step; the frozen latest version at review and done; else none. */
+export function blueprintFor(s: Session): Blueprint | undefined {
+  if (s.step === "blueprint") {
+    return buildBlueprint(s, knowledgeRefs(), now(), { version: (s.review?.version ?? 0) + 1, draft: true });
+  }
+  if ((s.step === "review" || s.step === "done") && s.review) return getBlueprint(s.id, s.review.version);
+  return undefined;
+}
+
+function withBlueprint(r: EngineResult): EngineResult {
+  const blueprint = blueprintFor(r.session);
+  return blueprint ? { ...r, blueprint } : r;
+}
+
+// --- Reviewer (link = access; the server sets who: "reviewer") ------------------------------
+
+const NOT_FOUND = "This review link doesn't exist.";
+
+function sessionForReview(reviewId: string): Session | undefined {
+  const id = findSessionIdByReviewId(reviewId);
+  const s = id ? getSession(id) : undefined;
+  return s?.review ? s : undefined;
+}
+
+/** What the reviewer page shows. Reading it has no side effects. */
+export function reviewView(reviewId: string): ReviewView | undefined {
+  const s = sessionForReview(reviewId);
+  const blueprint = s && getBlueprint(s.id, s.review!.version);
+  if (!s || !blueprint) return undefined;
+  const rounds = getRounds(s.id);
+  const expertMinutes = Math.round(rounds.reduce((sum, r) => sum + (r.minutes ?? 0), 0) * 10) / 10;
+  return { reviewId, status: s.review!.status, blueprint, rounds, expertMinutes };
+}
+
+const DECIDED: Record<string, string> = {
+  approved: "approved", rejected: "rejected", changes: "back with the requester for changes",
+};
+
+/**
+ * A reviewer action. Version and status are checked first, so a stale tab gets a 404 or
+ * 409 and nothing is reduced or saved: no blocked line lands in the requester's log.
+ */
+export async function reviewAct(reviewId: string, input: unknown): Promise<{ status: 200 | 400 | 404 | 409; body: ReviewResponse }> {
+  const parsed = ReviewActionSchema.safeParse(input);
+  if (!parsed.success) return { status: 400, body: { error: parsed.error.issues[0]?.message ?? "Invalid action." } };
+  const a = parsed.data;
+  const s = sessionForReview(reviewId);
+  if (!s) return { status: 404, body: { error: NOT_FOUND } };
+
+  const r = s.review!;
+  if (a.version !== r.version) {
+    return { status: 409, body: { error: `This link now shows v${r.version}, not v${a.version}.`, review: reviewView(reviewId) } };
+  }
+  if (r.status !== "pending") {
+    return { status: 409, body: { error: `v${r.version} is already ${DECIDED[r.status]}.`, review: reviewView(reviewId) } };
+  }
+
+  const at = now();
+  const next = a.type === "open"
+    ? reduce(s, { type: "REVIEW_OPENED", version: a.version, at })
+    : reduce(s, { type: "REVIEW_DECISION", version: a.version, status: a.status, note: a.note, at });
+  if (next !== s) saveReviewEvent(next, at); // a second open changes nothing
+  return { status: 200, body: { review: reviewView(reviewId) } };
 }

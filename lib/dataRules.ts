@@ -32,24 +32,32 @@ export function normalise(text: string): string {
 }
 
 /**
- * The gap inside a multi-word term: any run of whitespace, Unicode dashes (\p{Pd}) or the
- * minus sign U+2212 (not in Pd), possibly none: "degree" + U+200B + "audit" normalises to "degreeaudit".
+ * The gap inside a multi-word term: any run of whitespace, Unicode dashes (\p{Pd}), the minus
+ * sign U+2212 (not in Pd) or underscores ("student_id"), possibly none: "degree" + U+200B +
+ * "audit" normalises to "degreeaudit". No "." or "/" (contract §6).
  */
-const SEP = String.raw`[\s\p{Pd}\u2212]*`;
-/** A rule pattern from a template: "_" is the gap inside a term, "'" any apostrophe. Whole words, any case, Unicode mode. */
-const term = (src: string) => new RegExp(String.raw`\b(${src.replace(/_/g, SEP).replace(/'/g, "['\u2019]")})\b`, "iu");
+const SEP = String.raw`[\s\p{Pd}\u2212_]*`;
+/** Expands a template: "_" is the gap inside a term, "'" any apostrophe. */
+const expand = (src: string) => src.replace(/_/g, SEP).replace(/'/g, "['\u2019]");
+/** A Level 1-2 pattern: whole words (\b), so ".psu.edu" still matches inside "www.psu.edu". */
+const term = (src: string) => new RegExp(String.raw`\b(${expand(src)})\b`, "iu");
+/**
+ * A Level 3-4 pattern: no letter or digit on either side. \b would treat "_" as part of a word,
+ * so "my_degree_audit" would not match.
+ */
+const recordTerm = (src: string) => new RegExp(String.raw`(?<![\p{L}\p{N}])(${expand(src)})(?![\p{L}\p{N}])`, "iu");
 
 // Highest level first: the first match wins. Patterns match data sources, not topics:
 // "medical withdrawal" as a hand-off topic is fine; "medical records" as a source is not.
 export const RULES: Rule[] = [
-  { id: "ssn", level: 4, label: "Social Security numbers", pattern: term("(ssn|social_security(_number)?)s?"), reason: "SSNs are Level 4 (restricted)." },
-  { id: "health", level: 4, label: "Health or medical records", pattern: term("(medical|health|counseling|disability)_(records?|history|files?|information|notes)"), reason: "Health records are Level 4 (restricted)." },
-  { id: "finaid", level: 4, label: "Financial aid account data", pattern: term("financial_aid_(account|record|package|award)s?|fafsa|bank_(account|details)"), reason: "Financial account data is Level 4 (GLBA)." },
-  { id: "degree-audit", level: 3, label: "Degree audits", pattern: term("degree_audits?|what_if_reports?|academic_requirements_reports?"), reason: "A degree audit is a FERPA student record (Level 3)." },
-  { id: "transcript", level: 3, label: "Transcripts", pattern: term("transcripts?|advising_transcripts?"), reason: "Transcripts are FERPA student records (Level 3)." },
-  { id: "grades", level: 3, label: "Student grades", pattern: term("grade_(reports?|history|records?)|gradebook|(their|student'?s?|students'|individual)_grades"), reason: "Individual grades are FERPA student records (Level 3)." },
-  { id: "student-id", level: 3, label: "Student IDs", pattern: term("(student_id|psu_id|id_numbers?|access_account_(id|user_id))s?"), reason: "Student identifiers are PII (Level 3)." },
-  { id: "records-system", level: 3, label: "Student records systems", pattern: term("lionpath_(records?|data)|starfish_(notes|records?)|advising_(notes|records)|student_records?"), reason: "Records about a named student are FERPA records (Level 3)." },
+  { id: "ssn", level: 4, label: "Social Security numbers", pattern: recordTerm("(ssn|social_security(_number)?)s?"), reason: "SSNs are Level 4 (restricted)." },
+  { id: "health", level: 4, label: "Health or medical records", pattern: recordTerm("(medical|health|counseling|disability)_(records?|history|files?|information|notes)"), reason: "Health records are Level 4 (restricted)." },
+  { id: "finaid", level: 4, label: "Financial aid account data", pattern: recordTerm("financial_aid_(account|record|package|award)s?|fafsa|bank_(account|details)"), reason: "Financial account data is Level 4 (GLBA)." },
+  { id: "degree-audit", level: 3, label: "Degree audits", pattern: recordTerm("degree_audits?|what_if_reports?|academic_requirements_reports?"), reason: "A degree audit is a FERPA student record (Level 3)." },
+  { id: "transcript", level: 3, label: "Transcripts", pattern: recordTerm("transcripts?|advising_transcripts?"), reason: "Transcripts are FERPA student records (Level 3)." },
+  { id: "grades", level: 3, label: "Student grades", pattern: recordTerm("grade_(reports?|history|records?)|gradebook|(their|student'?s?|students'|individual)_grades"), reason: "Individual grades are FERPA student records (Level 3)." },
+  { id: "student-id", level: 3, label: "Student IDs", pattern: recordTerm("(student_id|psu_id|id_numbers?|access_account_(id|user_id))s?"), reason: "Student identifiers are PII (Level 3)." },
+  { id: "records-system", level: 3, label: "Student records systems", pattern: recordTerm("lionpath_(records?|data)|starfish_(notes|records?)|advising_(notes|records)|student_records?"), reason: "Records about a named student are FERPA records (Level 3)." },
   { id: "internal-doc", level: 2, label: "Internal documents", pattern: term("sharepoint|onedrive|internal_(doc|document|wiki|page)s?|teams_(files?|channel)|(my|our|the_advising)_(faq|notes|doc|docs|spreadsheet)"), reason: "Internal department material is Level 2." },
   { id: "public-page", level: 1, label: "Public web pages", pattern: term(String.raw`bulletins?|public_(web_)?(pages?|site)|website|catalog|\.psu\.edu|smeal_(change_of_major_)?page`), reason: "Published public pages are Level 1." },
 ];

@@ -60,6 +60,11 @@ test("Notice requires text and says its tone in words for danger", () => {
   assert.match(renderToStaticMarkup(<Notice>Saved.</Notice>), /role="status"/);
 });
 
+test("a static Notice (live={false}) has no live role, even for danger", () => {
+  assert.doesNotMatch(renderToStaticMarkup(<Notice live={false}>Flagged earlier.</Notice>), /role=/);
+  assert.doesNotMatch(renderToStaticMarkup(<Notice tone="danger" live={false}>Flagged earlier.</Notice>), /role=/);
+});
+
 test("ChoiceList is a radiogroup of radios with aria-checked and one tab stop", () => {
   const html = renderToStaticMarkup(
     <ChoiceList label="Scope" value="b" onChange={() => {}} options={[

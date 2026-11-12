@@ -90,9 +90,10 @@ test("who filled each spec row is said in words", () => {
   assert.match(rev, /Not answered/);
 });
 
-test("the pushback is a Notice and keeps the flagged level in words", () => {
+test("the pushback is a static Notice (no live role: it's history) and keeps the flagged level in words", () => {
   const html = renderToStaticMarkup(<BlueprintView blueprint={bp()} audience="reviewer" />);
-  assert.match(html, /role="status"[^>]*>[\s\S]*Flagged and removed/);
+  assert.match(html, /Flagged and removed/);
+  assert.doesNotMatch(html, /role="(status|alert)"/);
   assert.match(text(html), /Students paste their degree audit Level 3/);
   assert.match(text(html), /Never ask for a degree audit\./);
 });

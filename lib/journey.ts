@@ -249,7 +249,8 @@ export function reduce(s: Session, a: Action): Session {
       // The resulting rule lives on the pushback (SCENARIO.pushback.options[choice].rule), not in the
       // requester's slots, so a later answer can't overwrite it.
       const sources = s.sources.filter((src) => src.level < 3);
-      if (a.choice === "selfreport") sources.push(SCENARIO.pushback.selfReportSource);
+      const self = SCENARIO.pushback.selfReportSource;
+      if (a.choice === "selfreport" && !sources.some((src) => src.name === self.name)) sources.push(self); // once, even after a second flag
       const what = SCENARIO.pushback.options[a.choice].logLine;
       const next: Session = {
         ...s, sources, question: undefined,

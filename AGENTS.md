@@ -18,9 +18,10 @@ Demo path only: Dana, a Penn State Smeal undergraduate advisor, wants an agent t
 ## Layout
 
 ```
-app/            Next.js App Router pages + route handlers (/ requester, /review/[id] reviewer)
+app/            Next.js App Router pages + route handlers (/ requester)
 lib/llm.ts      complete({ system, messages, schema, model }) -> typed JSON
-lib/            journey (state machine), dataRules (gate), interviewer, knowledge, store (SQLite), engine (orchestration); later: scoper, drafter, tests, runner, grader
+lib/            types (contract), journey (state machine), dataRules (gate), interviewer, knowledge, scoper (scope + cost),
+                checks (deterministic answer checks), store (SQLite), engine (orchestration)
 knowledge/      public page snapshots, front matter has url + fetchedAt
 scripts/        smoke.ts (npm run smoke)
 data/           SQLite file (gitignored)
@@ -46,6 +47,7 @@ Steps: `idea -> interview -> scope -> tests -> blueprint -> review -> done`. Cos
 - `npm run dev` · `npm test` · `npm run typecheck` · `npm run lint`
 - `LLM_PROVIDER=offline` in `.env`: scripted interviewer, no model calls, labeled in the UI. For UI work only; the demo uses real models.
 - `npm run smoke`: one structured call per configured model (needs `.env`)
+- Install: `npm ci`. On Windows without Visual Studio's C++ tools, `npm ci` fails building `better-sqlite3` ("gyp ERR! find VS"); use `npm ci --ignore-scripts` then `npm rebuild esbuild` (the package ships a win32-x64 prebuild). Verified on Windows 11, Node 24.22.1, npm 11.3.0.
 
 <!-- BEGIN:nextjs-agent-rules -->
 

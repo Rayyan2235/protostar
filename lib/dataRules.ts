@@ -21,23 +21,39 @@ export interface Rule {
   reason: string;
 }
 
+/**
+ * Text as the rules see it: compatibility forms folded (fullwidth letters, NBSP, U+2011),
+ * every format character removed (zero-width, soft hyphen, bidi), and every space
+ * separator turned into a plain space. Line breaks and tabs stay, so they still end a
+ * negation (contract §6, BE-4d).
+ */
+export function normalise(text: string): string {
+  return text.normalize("NFKC").replace(/\p{Cf}/gu, "").replace(/\p{Zs}/gu, " ");
+}
+
+/** The gap inside a multi-word term: any run of whitespace or hyphens, possibly none ("degree​audit"). */
+const SEP = String.raw`[\s\-‐‑]*`;
+/** A rule pattern from a template: "_" is the gap inside a term, "'" any apostrophe. Whole words, any case. */
+const term = (src: string) => new RegExp(String.raw`\b(${src.replace(/_/g, SEP).replace(/'/g, "['’]")})\b`, "i");
+
 // Highest level first: the first match wins. Patterns match data sources, not topics:
 // "medical withdrawal" as a hand-off topic is fine; "medical records" as a source is not.
 export const RULES: Rule[] = [
-  { id: "ssn", level: 4, label: "Social Security numbers", pattern: /\b(ssn|social security( number)?)s?\b/i, reason: "SSNs are Level 4 (restricted)." },
-  { id: "health", level: 4, label: "Health or medical records", pattern: /\b(medical|health|counseling|disability) (records?|history|files?|information|notes)\b/i, reason: "Health records are Level 4 (restricted)." },
-  { id: "finaid", level: 4, label: "Financial aid account data", pattern: /\b(financial[- ]aid (account|record|package|award)s?|fafsa|bank (account|details))\b/i, reason: "Financial account data is Level 4 (GLBA)." },
-  { id: "degree-audit", level: 3, label: "Degree audits", pattern: /\b(degree audits?|what[- ]?if reports?|academic requirements reports?)\b/i, reason: "A degree audit is a FERPA student record (Level 3)." },
-  { id: "transcript", level: 3, label: "Transcripts", pattern: /\b(transcripts?|advising transcripts?)\b/i, reason: "Transcripts are FERPA student records (Level 3)." },
-  { id: "grades", level: 3, label: "Student grades", pattern: /\b(grade (reports?|history|records?)|gradebook|(their|student'?s?|students'|individual) grades)\b/i, reason: "Individual grades are FERPA student records (Level 3)." },
-  { id: "student-id", level: 3, label: "Student IDs", pattern: /\b(student id|psu id|id numbers?|access account (id|user ?id))s?\b/i, reason: "Student identifiers are PII (Level 3)." },
-  { id: "records-system", level: 3, label: "Student records systems", pattern: /\b(lionpath (records?|data)|starfish (notes|records?)|advising (notes|records)|student records?)\b/i, reason: "Records about a named student are FERPA records (Level 3)." },
-  { id: "internal-doc", level: 2, label: "Internal documents", pattern: /\b(sharepoint|onedrive|internal (doc|document|wiki|page)s?|teams (files?|channel)|(my|our|the advising) (faq|notes|doc|docs|spreadsheet))\b/i, reason: "Internal department material is Level 2." },
-  { id: "public-page", level: 1, label: "Public web pages", pattern: /\b(bulletins?|public (web )?(pages?|site)|website|catalog|\.psu\.edu|smeal (change[- ]of[- ]major )?page)\b/i, reason: "Published public pages are Level 1." },
+  { id: "ssn", level: 4, label: "Social Security numbers", pattern: term("(ssn|social_security(_number)?)s?"), reason: "SSNs are Level 4 (restricted)." },
+  { id: "health", level: 4, label: "Health or medical records", pattern: term("(medical|health|counseling|disability)_(records?|history|files?|information|notes)"), reason: "Health records are Level 4 (restricted)." },
+  { id: "finaid", level: 4, label: "Financial aid account data", pattern: term("financial_aid_(account|record|package|award)s?|fafsa|bank_(account|details)"), reason: "Financial account data is Level 4 (GLBA)." },
+  { id: "degree-audit", level: 3, label: "Degree audits", pattern: term("degree_audits?|what_if_reports?|academic_requirements_reports?"), reason: "A degree audit is a FERPA student record (Level 3)." },
+  { id: "transcript", level: 3, label: "Transcripts", pattern: term("transcripts?|advising_transcripts?"), reason: "Transcripts are FERPA student records (Level 3)." },
+  { id: "grades", level: 3, label: "Student grades", pattern: term("grade_(reports?|history|records?)|gradebook|(their|student'?s?|students'|individual)_grades"), reason: "Individual grades are FERPA student records (Level 3)." },
+  { id: "student-id", level: 3, label: "Student IDs", pattern: term("(student_id|psu_id|id_numbers?|access_account_(id|user_id))s?"), reason: "Student identifiers are PII (Level 3)." },
+  { id: "records-system", level: 3, label: "Student records systems", pattern: term("lionpath_(records?|data)|starfish_(notes|records?)|advising_(notes|records)|student_records?"), reason: "Records about a named student are FERPA records (Level 3)." },
+  { id: "internal-doc", level: 2, label: "Internal documents", pattern: term("sharepoint|onedrive|internal_(doc|document|wiki|page)s?|teams_(files?|channel)|(my|our|the_advising)_(faq|notes|doc|docs|spreadsheet)"), reason: "Internal department material is Level 2." },
+  { id: "public-page", level: 1, label: "Public web pages", pattern: term(String.raw`bulletins?|public_(web_)?(pages?|site)|website|catalog|\.psu\.edu|smeal_(change_of_major_)?page`), reason: "Published public pages are Level 1." },
 ];
 
 export function matchRule(text: string): Rule | undefined {
-  return RULES.find((r) => r.pattern.test(text));
+  const t = normalise(text);
+  return RULES.find((r) => r.pattern.test(t));
 }
 
 /** Classify one named source: rule if any matches, else the model's suggestion. */
@@ -95,10 +111,11 @@ function negated(text: string, index: number, slot?: SlotKey): boolean {
  */
 export function scanText(text: string, slot?: SlotKey): Source[] {
   const hits: Source[] = [];
+  const norm = normalise(text); // matching and the negation gap both read the normalised text
   for (const rule of RULES.filter((r) => r.level >= 3)) {
     const re = new RegExp(rule.pattern.source, "gi");
-    for (const m of text.matchAll(re)) {
-      if (negated(text, m.index, slot)) continue;
+    for (const m of norm.matchAll(re)) {
+      if (negated(norm, m.index, slot)) continue;
       hits.push({ name: rule.label, level: rule.level, decidedBy: "rule", reason: rule.reason, ruleId: rule.id });
       break;
     }

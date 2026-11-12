@@ -51,6 +51,11 @@ const STARS: [number, number, number][] = [
   [44, 28, .2], [81, 31, .25], [27, 34, .2], [59, 26, .2],
 ];
 
+/** "auto" follows the visitor's clock; a pinned mode ignores it. */
+export function skyFor(mode: "auto" | SkyMode, hour: number): SkyMode {
+  return mode === "auto" ? skyForHour(hour) : mode;
+}
+
 export function LivingSky({ label, mode = "auto", motion = true, orb = true, className = "", children }: {
   /** What the scene shows, for screen readers. */
   label: string;
@@ -64,7 +69,7 @@ export function LivingSky({ label, mode = "auto", motion = true, orb = true, cla
   children?: ReactNode;
 }) {
   const hour = useSyncExternalStore(subscribeHour, readHour, serverHour);
-  const sky = mode === "auto" ? skyForHour(hour) : mode;
+  const sky = skyFor(mode, hour);
   const ref = useRef<HTMLDivElement>(null);
   const [onScreen, setOnScreen] = useState(false);
 

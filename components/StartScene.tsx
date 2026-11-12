@@ -7,9 +7,12 @@ import { LivingSky } from "./kiln/LivingSky";
  * a dark ridge, and one small figure watching. Flat SVG layers on LivingSky; tokens only.
  * Composed for a wide frame: everything sits in the lower 85% so a wide crop never cuts the star.
  */
+/** The world is a night sky (Lead, 2026-11-12), so the start scene ignores the clock. Rayyan may flip it to "auto". */
+export const START_SKY = "night" as const;
+
 export function StartScene({ className = "" }: { className?: string }) {
   return (
-    <LivingSky orb={false} className={`h-[calc(var(--space-8)+var(--space-5))] rounded-(--radius-lg) ${className}`}
+    <LivingSky mode={START_SKY} orb={false} className={`h-[calc(var(--space-8)+var(--space-5))] rounded-(--radius-lg) ${className}`}
       label="A night sky over a dark ridge. A young star is forming inside a cloud of dust, and a small figure on the ridge watches it.">
       <svg className="absolute inset-0 size-full" viewBox="0 0 800 240" preserveAspectRatio="xMidYMax slice">
         {/* Dust cloud the star is forming in. */}

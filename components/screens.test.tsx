@@ -143,7 +143,7 @@ test("DecisionForm: Approve is the one pill; changes and reject are outlined", (
 test("DecisionForm disabled: no pill arrow, controls disabled, says why", () => {
   const html = renderToStaticMarkup(<DecisionForm enabled={false} busy={false} onDecide={async () => true} />);
   assert.equal(count(html, 'data-chip="arrow"'), 0);
-  assert.equal(count(html, "disabled"), 4);
+  assert.equal(count(html, 'disabled=""'), 4);
   assert.match(text(html), /Nothing to decide right now\./);
 });
 

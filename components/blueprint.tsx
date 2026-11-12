@@ -4,47 +4,47 @@ import { useState, type ReactNode } from "react";
 import type { Blueprint, BlueprintSlot, Level, Source } from "@/lib/types";
 import { aiStudioText, blueprintJson, blueprintMarkdown, exportFileName } from "@/lib/export";
 import { formatDollars } from "@/lib/scoper";
+import { Button } from "@/components/kiln/Button";
+import { SpecSheet } from "@/components/kiln/SpecSheet";
+import { Tag } from "@/components/kiln/Tag";
+import { Notice } from "@/components/Notice";
 
 type Audience = "requester" | "reviewer";
-
-/** Badge colors by data level (index = level). */
-export const LEVEL_STYLE = ["", "bg-emerald-100 text-emerald-900", "bg-sky-100 text-sky-900", "bg-red-100 text-red-900", "bg-red-200 text-red-950"];
-
-const RISK_STYLE = { Low: "bg-emerald-100 text-emerald-900", Medium: "bg-amber-100 text-amber-900", High: "bg-red-100 text-red-900" } as const;
 
 /** ISO date or timestamp -> YYYY-MM-DD. Same output on server and client. */
 const day = (iso: string) => iso.slice(0, 10);
 
+/** A data level, always in words. */
 export function LevelBadge({ level }: { level: Level }) {
-  return (
-    <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${LEVEL_STYLE[level]}`}>
-      <span aria-hidden="true">L{level}</span>
-      <span className="sr-only">Level {level}</span>
-    </span>
-  );
+  return <Tag>Level {level}</Tag>;
 }
+
+const LINK = "text-link underline underline-offset-4 decoration-stone hover:decoration-link focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-accent";
 
 /** A data source: name (linked when public), level, who decided it, and why (visible, not hover-only). */
 export function SourceItem({ src }: { src: Source }) {
   return (
-    <li className="text-sm">
-      <div className="flex items-start justify-between gap-2">
-        <span className="text-zinc-800">{src.url ? <a href={src.url} target="_blank" rel="noreferrer" className="underline decoration-zinc-300">{src.name}</a> : src.name}</span>
-        <span className="flex shrink-0 gap-1">
+    <li className="border-b border-hairline py-(--space-2) last:border-b-0">
+      <div className="flex flex-wrap items-start justify-between gap-(--space-2)">
+        <span className="small text-ink">
+          {src.url ? <a href={src.url} target="_blank" rel="noreferrer" className={LINK}>{src.name}</a> : src.name}
+        </span>
+        <span className="flex shrink-0 gap-(--space-1)">
           <LevelBadge level={src.level} />
-          <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-zinc-600">{src.decidedBy}</span>
+          <Tag>by {src.decidedBy}</Tag>
         </span>
       </div>
-      <p className="mt-0.5 text-xs text-zinc-500">{src.reason}</p>
+      <p className="small mt-(--space-1) font-normal text-ink-muted">{src.reason}</p>
     </li>
   );
 }
 
+/** A blueprint section: grouped by space and a hairline, headed by a mono label. No boxes. */
 function Section({ title, aside, children }: { title: string; aside?: ReactNode; children: ReactNode }) {
   return (
-    <section className="border-t border-zinc-200 pt-4">
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">{title}</h3>
+    <section className="border-t border-hairline pt-(--space-3)">
+      <div className="mb-(--space-2) flex flex-wrap items-center justify-between gap-(--space-2)">
+        <h3 className="label uppercase text-ink-muted">{title}</h3>
         {aside}
       </div>
       {children}
@@ -55,126 +55,135 @@ function Section({ title, aside, children }: { title: string; aside?: ReactNode;
 function SpecRow({ slot, audience }: { slot: BlueprintSlot; audience: Audience }) {
   const byRequester = slot.filledBy === "requester";
   return (
-    <div>
-      <dt className="flex items-center justify-between gap-2 text-xs font-medium text-zinc-500">
-        <span>{slot.label}</span>
-        <span className={byRequester ? "text-indigo-700" : "text-zinc-500"}>
-          {byRequester ? (audience === "requester" ? "You" : "Requester") : "Filled by the tool"}
-        </span>
+    <div className="border-b border-hairline py-(--space-2) last:border-b-0">
+      <dt className="flex flex-wrap items-center justify-between gap-(--space-2)">
+        <span className="small text-ink-soft">{slot.label}</span>
+        <Tag>{byRequester ? (audience === "requester" ? "You" : "Requester") : "Filled by the tool"}</Tag>
       </dt>
-      <dd className="mt-0.5 whitespace-pre-wrap text-sm text-zinc-900">
-        {slot.value || <span className="text-zinc-400">Not answered</span>}
+      <dd className="body mt-(--space-1) whitespace-pre-wrap text-ink">
+        {slot.value || <span className="text-ink-muted">Not answered</span>}
       </dd>
-      {slot.note && <dd className="mt-1 rounded bg-amber-50 px-2 py-1 text-xs text-amber-900">{slot.note}</dd>}
+      {slot.note && <dd className="small mt-(--space-1) font-normal text-ink-soft"><span className="font-semibold text-ink">Note: </span>{slot.note}</dd>}
     </div>
   );
 }
 
 /** The one-page blueprint: what the requester submits and the reviewer approves. Read-only. */
-export function BlueprintView({ blueprint: bp, audience }: { blueprint: Blueprint; audience: Audience }) {
+export function BlueprintView({ blueprint: bp, audience, status }: {
+  blueprint: Blueprint;
+  audience: Audience;
+  /** The review state in words. Defaults to draft / submitted. */
+  status?: string;
+}) {
   const { data, scope } = bp;
+  const cost = (
+    <span className="flex flex-col gap-(--space-1) sm:items-end">
+      <span>
+        {scope.estimate
+          ? <>≈ <span className="font-semibold">{formatDollars(scope.estimate.monthlyDollars)}</span></>
+          : "No list price on file for this model, so no estimate."}
+      </span>
+      <span className="text-ink-muted">{bp.costNote}</span>
+    </span>
+  );
+
   return (
-    <article className="flex flex-col gap-4 p-4" aria-label={`Blueprint v${bp.version}`}>
-      <header>
-        <p className="text-xs font-medium text-zinc-500">
-          {bp.draft ? `Draft · becomes v${bp.version} when submitted` : `v${bp.version} · submitted ${day(bp.builtAt)}`}
+    <article className="flex flex-col gap-(--space-5)" aria-label={`Blueprint v${bp.version}`}>
+      <div className="flex flex-col gap-(--space-3)">
+        <SpecSheet
+          number={bp.draft ? "Draft" : `v${bp.version}`}
+          title={bp.title}
+          revision={bp.draft ? `becomes v${bp.version} on submit` : `rev. ${day(bp.builtAt)}`}
+          rows={[
+            { label: "Scope", value: `${scope.label} · ${scope.risk} risk` },
+            { label: "Model", value: scope.model },
+            { label: "Est. cost / month", value: cost },
+            { label: "Highest data level", value: `Level ${data.maxLevel} · ${data.allowed ? "allowed" : "blocked"}` },
+            { label: "Data choice", value: data.pushback ? data.pushback.title : "Nothing flagged" },
+            { label: "Tests", value: bp.tests.status === "not-run" ? "Not run yet" : String(bp.tests.status) },
+            { label: "Status", value: status ?? (bp.draft ? "Draft, not submitted" : "Submitted") },
+          ]}
+        />
+        <p className="body whitespace-pre-wrap text-ink-soft">
+          <span className="font-semibold text-ink">Purpose: </span>{bp.idea}
         </p>
-        <h2 className="mt-1 text-lg font-semibold text-zinc-900">{bp.title}</h2>
-        <p className="mt-1 whitespace-pre-wrap text-sm text-zinc-700">
-          <span className="font-medium text-zinc-900">Purpose: </span>{bp.idea}
-        </p>
-      </header>
+      </div>
 
       <Section title="Spec">
-        <dl className="space-y-3">
+        <dl>
           {bp.spec.map((s) => <SpecRow key={s.key} slot={s} audience={audience} />)}
         </dl>
       </Section>
 
-      <Section
-        title="Data"
-        aside={
-          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${data.allowed ? "bg-emerald-100 text-emerald-900" : "bg-red-100 text-red-900"}`}>
-            {data.allowed ? `Allowed · highest Level ${data.maxLevel}` : `Blocked · Level ${data.maxLevel}`}
-          </span>
-        }
-      >
-        <p className="text-sm text-zinc-800">{data.summary}</p>
+      <Section title="Data">
+        <p className="body text-ink">{data.summary}</p>
         {data.sources.length > 0 && (
-          <ul className="mt-2 space-y-2">
+          <ul className="mt-(--space-2)">
             {data.sources.map((s) => <SourceItem key={s.name} src={s} />)}
           </ul>
         )}
         {data.pushback && (
-          <div className="mt-3 rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm">
-            <p className="text-zinc-700">
-              <span className="font-medium text-zinc-900">Flagged and removed: </span>
-              {data.pushback.flagged.map((f, i) => (
-                <span key={f.name}>
-                  {i > 0 && ", "}
-                  {f.name}
-                  {f.level && <> <LevelBadge level={f.level} /></>}
-                </span>
-              ))}
-            </p>
-            <p className="mt-2 text-zinc-700"><span className="font-medium text-zinc-900">Data choice: </span>{data.pushback.title}</p>
-            <p className="mt-1 text-zinc-700"><span className="font-medium text-zinc-900">Rule added: </span>{data.pushback.rule}</p>
+          <div className="mt-(--space-3)">
+            <Notice tone="accent" title="Flagged and removed">
+              <p>
+                {data.pushback.flagged.map((f, i) => (
+                  <span key={f.name}>
+                    {i > 0 && ", "}
+                    {f.name}
+                    {f.level && <> <LevelBadge level={f.level} /></>}
+                  </span>
+                ))}
+              </p>
+              <p className="mt-(--space-1)"><span className="font-semibold text-ink">Data choice: </span>{data.pushback.title}</p>
+              <p className="mt-(--space-1)"><span className="font-semibold text-ink">Rule added: </span>{data.pushback.rule}</p>
+            </Notice>
           </div>
         )}
       </Section>
 
-      <Section title="Scope and cost">
-        <p className="flex flex-wrap items-center gap-2 text-sm">
-          <span className="font-medium text-zinc-900">{scope.label}</span>
-          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${RISK_STYLE[scope.risk]}`}>{scope.risk} risk</span>
+      <Section title="Scope" aside={<Tag>{scope.risk} risk</Tag>}>
+        <p className="title text-ink">{scope.label}</p>
+        <p className="body mt-(--space-1) text-ink-soft">{scope.desc}</p>
+        <p className="small mt-(--space-2) font-normal text-ink-soft">
+          Model: <span className="font-semibold text-ink">{scope.model}</span> · {scope.knobs.studentsPerMonth.toLocaleString("en-US")} students/month × {scope.knobs.convsPerStudent} conversations each
         </p>
-        <p className="mt-1 text-sm text-zinc-700">{scope.desc}</p>
-        <p className="mt-2 text-sm text-zinc-800">
-          Model: <span className="font-medium">{scope.model}</span> · {scope.knobs.studentsPerMonth.toLocaleString("en-US")} students/month × {scope.knobs.convsPerStudent} conversations each
-        </p>
-        <p className="mt-1 text-sm text-zinc-900">
-          {scope.estimate
-            ? <>≈ <span className="font-semibold">{formatDollars(scope.estimate.monthlyDollars)}</span>/month</>
-            : "No list price on file for this model, so no estimate."}
-        </p>
-        <p className="mt-1 text-xs text-zinc-500">{bp.costNote}</p>
       </Section>
 
       <Section title="Knowledge">
         {bp.knowledge.length ? (
-          <ul className="space-y-1.5">
+          <ul>
             {bp.knowledge.map((k) => (
-              <li key={k.url} className="flex items-start justify-between gap-2 text-sm">
-                <a href={k.url} target="_blank" rel="noreferrer" className="text-zinc-800 underline decoration-zinc-300">{k.title}</a>
-                <span className="flex shrink-0 items-center gap-1 text-xs text-zinc-500">
-                  fetched {day(k.fetchedAt)} <LevelBadge level={k.level} />
+              <li key={k.url} className="flex flex-wrap items-start justify-between gap-(--space-2) border-b border-hairline py-(--space-2) last:border-b-0">
+                <a href={k.url} target="_blank" rel="noreferrer" className={`small ${LINK}`}>{k.title}</a>
+                <span className="flex shrink-0 items-center gap-(--space-2)">
+                  <span className="label text-ink-muted">fetched {day(k.fetchedAt)}</span>
+                  <LevelBadge level={k.level} />
                 </span>
               </li>
             ))}
           </ul>
         ) : (
-          <p className="text-sm text-zinc-400">No knowledge pages.</p>
+          <p className="small font-normal text-ink-muted">No knowledge pages.</p>
         )}
       </Section>
 
-      <Section
-        title="Draft instructions"
-        aside={<span className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-zinc-600">{bp.instructions.draftedBy === "template" ? "template" : "drafted by model"}</span>}
-      >
-        <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-lg bg-zinc-50 p-3 font-sans text-sm text-zinc-800">{bp.instructions.text}</pre>
+      <Section title="Draft instructions" aside={<Tag>{bp.instructions.draftedBy === "template" ? "template" : "drafted by model"}</Tag>}>
+        <pre className="small max-h-[calc(var(--space-8)*2)] overflow-auto whitespace-pre-wrap rounded-(--radius-sm) bg-paper-sunk p-(--space-3) font-body font-normal text-ink">{bp.instructions.text}</pre>
       </Section>
 
       <Section title="Tests">
-        <p className="text-sm text-zinc-600">{bp.tests.note}</p>
+        <p className="body text-ink-soft">{bp.tests.note}</p>
       </Section>
 
-      <details className="border-t border-zinc-200 pt-4">
-        <summary className="cursor-pointer text-sm font-semibold uppercase tracking-wide text-zinc-500">Decision log ({bp.log.length})</summary>
-        <ol className="mt-3 space-y-1.5 text-xs">
+      <details className="group border-t border-hairline pt-(--space-3)">
+        <summary className="label cursor-pointer uppercase text-ink-muted focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-accent">
+          Decision log ({bp.log.length})
+        </summary>
+        <ol className="mt-(--space-2)">
           {bp.log.map((d, i) => (
-            <li key={i} className="flex gap-2">
-              <span className={`w-16 shrink-0 font-medium ${d.who === "requester" ? "text-indigo-700" : d.who === "reviewer" ? "text-amber-700" : "text-zinc-500"}`}>{d.who}</span>
-              <span className="text-zinc-700">{d.what}</span>
+            <li key={i} className="flex gap-(--space-2) border-b border-hairline py-(--space-1) last:border-b-0">
+              <span className={`label w-(--space-7) shrink-0 ${d.who === "requester" ? "text-accent" : d.who === "reviewer" ? "text-ink" : "text-ink-muted"}`}>{d.who}</span>
+              <span className="small font-normal text-ink-soft">{d.what}</span>
             </li>
           ))}
         </ol>
@@ -195,7 +204,7 @@ function download(text: string, name: string, type: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-/** Markdown and JSON downloads, plus a copy-paste block for AI Studio. */
+/** Markdown and JSON downloads, plus a copy-paste block for AI Studio. Outline buttons: the screen's pill is elsewhere. */
 export function ExportBar({ blueprint: bp }: { blueprint: Blueprint }) {
   const [status, setStatus] = useState("");
 
@@ -208,20 +217,19 @@ export function ExportBar({ blueprint: bp }: { blueprint: Blueprint }) {
     }
   };
 
-  const btn = "rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-800 hover:border-indigo-400 hover:bg-indigo-50";
   return (
-    <div className="flex flex-wrap items-center gap-2 border-t border-zinc-200 p-4">
-      <button type="button" className={btn} onClick={() => download(blueprintMarkdown(bp), exportFileName(bp, "md"), "text/markdown")}>
+    <div className="flex flex-wrap items-center gap-(--space-2) border-t border-hairline pt-(--space-3)">
+      <Button kind="outline" onClick={() => download(blueprintMarkdown(bp), exportFileName(bp, "md"), "text/markdown")}>
         Download Markdown
-      </button>
-      <button type="button" className={btn} onClick={() => download(blueprintJson(bp), exportFileName(bp, "json"), "application/json")}>
+      </Button>
+      <Button kind="outline" onClick={() => download(blueprintJson(bp), exportFileName(bp, "json"), "application/json")}>
         Download JSON
-      </button>
-      <button type="button" className={btn} onClick={copy} aria-describedby="ai-studio-note">
+      </Button>
+      <Button kind="outline" onClick={copy} aria-describedby="ai-studio-note">
         Copy for AI Studio
-      </button>
-      <span id="ai-studio-note" className="text-xs text-zinc-500">AI Studio field names provisional</span>
-      <span role="status" className="w-full text-xs text-zinc-600">{status}</span>
+      </Button>
+      <span id="ai-studio-note" className="label text-ink-muted">AI Studio field names provisional</span>
+      <span role="status" className="small w-full font-normal text-ink-soft">{status}</span>
     </div>
   );
 }

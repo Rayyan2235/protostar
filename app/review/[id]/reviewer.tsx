@@ -1,10 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { ReviewDecision, ReviewRound, ReviewView } from "@/lib/types";
 import type { ReviewAction, ReviewResponse } from "@/lib/api";
 import { BlueprintView, ExportBar } from "@/components/blueprint";
-import { ModeBadge, POLL_MS } from "@/app/studio";
+import { Button } from "@/components/kiln/Button";
+import { ModeBadge } from "@/components/ModeBadge";
+import { Notice } from "@/components/Notice";
+import { TextField } from "@/components/TextField";
+import { TopBar } from "@/components/TopBar";
+import { POLL_MS } from "@/app/studio";
 
 type Reply = { status: number; data: ReviewResponse };
 
@@ -23,6 +28,20 @@ const when = (iso?: string) =>
 const OUTCOME: Record<ReviewRound["status"], string> = {
   pending: "Waiting", approved: "Approved", changes: "Changes requested", rejected: "Rejected",
 };
+
+/** Page frame shared by every state: TopBar, then content at the app-shell width. */
+function Shell({ mode, children }: { mode?: string; children: ReactNode }) {
+  return (
+    <>
+      <TopBar title="Protostar" subtitle="Blueprint review · prototype">
+        {mode && <ModeBadge mode={mode} />}
+      </TopBar>
+      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-(--space-5) px-(--space-3) py-(--space-5) sm:px-(--space-6)">
+        {children}
+      </main>
+    </>
+  );
+}
 
 export default function Reviewer({ reviewId }: { reviewId: string }) {
   const [view, setView] = useState<ReviewView>();
@@ -85,65 +104,70 @@ export default function Reviewer({ reviewId }: { reviewId: string }) {
     }
   };
 
-  return (
-    <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-4 py-6 sm:px-6">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight text-zinc-900">Protostar</h1>
-          <p className="text-sm text-zinc-500">Blueprint review · prototype</p>
+  if (missing) {
+    return (
+      <Shell mode={mode}>
+        {/* Empty state without a backdrop (plan-kiln §2): heading-2 and one sentence. */}
+        <div role="alert" className="flex max-w-xl flex-col gap-(--space-2) py-(--space-6)">
+          <h1 className="heading-2 text-ink">This review link doesn&apos;t exist.</h1>
+          <p className="body text-ink-soft">Check the link with the person who sent it.</p>
         </div>
-        {mode && <ModeBadge mode={mode} />}
-      </header>
+      </Shell>
+    );
+  }
 
-      {missing ? (
-        <div role="alert" className="rounded-xl border border-zinc-200 bg-white p-6 text-zinc-800">
-          <h2 className="font-semibold text-zinc-900">This review link doesn&apos;t exist.</h2>
-          <p className="mt-1 text-sm text-zinc-600">Check the link with the person who sent it.</p>
+  if (!view) {
+    return (
+      <Shell mode={mode}>
+        {error ? <Notice tone="danger">{error}</Notice> : <p className="small font-normal text-ink-muted">Loading the blueprint…</p>}
+      </Shell>
+    );
+  }
+
+  return (
+    <Shell mode={mode}>
+      <h1 className="sr-only">Review blueprint v{view.blueprint.version}</h1>
+      <div className="grid gap-(--space-5) lg:grid-cols-12">
+        <div className="flex min-w-0 flex-col gap-(--space-4) lg:col-span-8">
+          <BlueprintView blueprint={view.blueprint} audience="reviewer" status={OUTCOME[view.status]} />
+          <ExportBar blueprint={view.blueprint} />
         </div>
-      ) : !view ? (
-        <p className="text-sm text-zinc-500">{error ?? "Loading the blueprint…"}</p>
-      ) : (
-        <div className="grid flex-1 gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <section className="rounded-xl border border-zinc-200 bg-white">
-            <BlueprintView blueprint={view.blueprint} audience="reviewer" />
-            <ExportBar blueprint={view.blueprint} />
-          </section>
-          <aside className="flex flex-col gap-4">
-            <StatusCard view={view} />
-            {error && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
-            {/* Keyed by version so a resubmitted version starts with an empty note. */}
-            <DecisionForm key={view.blueprint.version} enabled={view.status === "pending"} busy={busy} onDecide={decide} />
-            <Rounds view={view} />
-          </aside>
+        {/* Sticky on wide screens so the decision stays in reach while the blueprint scrolls. */}
+        <aside className="flex min-w-0 flex-col gap-(--space-4) lg:sticky lg:top-(--space-3) lg:col-span-4 lg:self-start" aria-label="Your review">
+          <StatusNotice view={view} />
+          {error && <Notice tone="danger">{error}</Notice>}
+          {/* Keyed by version so a resubmitted version starts with an empty note. */}
+          <DecisionForm key={view.blueprint.version} enabled={view.status === "pending"} busy={busy} onDecide={decide} />
+        </aside>
+        <div className="min-w-0 lg:col-span-8">
+          <Rounds view={view} />
         </div>
-      )}
-    </div>
+      </div>
+    </Shell>
   );
 }
 
-function StatusCard({ view }: { view: ReviewView }) {
+/** Where the review stands, in words. Rejected is an alert; the rest are status. */
+export function StatusNotice({ view }: { view: ReviewView }) {
   const v = view.blueprint.version;
   const note = view.rounds.at(-1)?.note;
-  const text = {
-    pending: { head: `v${v} · waiting for your decision`, body: "Read the blueprint, then approve it, ask for changes, or reject it.", style: "border-sky-200 bg-sky-50 text-sky-950" },
-    changes: { head: "Waiting for the requester to resubmit", body: `You asked for changes on v${v}: ${note ?? ""} This page shows the new version when it arrives.`, style: "border-amber-200 bg-amber-50 text-amber-950" },
-    approved: { head: `Approved v${v}`, body: "This review is closed.", style: "border-emerald-200 bg-emerald-50 text-emerald-950" },
-    rejected: { head: `Rejected v${v}`, body: note ?? "", style: "border-red-200 bg-red-50 text-red-950" },
-  }[view.status];
-  return (
-    <div role="status" className={`rounded-xl border p-4 ${text.style}`}>
-      <h2 className="font-semibold">{text.head}</h2>
-      {text.body && <p className="mt-1 text-sm">{text.body}</p>}
-    </div>
-  );
+  const s = {
+    pending: { tone: "accent", head: `v${v} · waiting for your decision`, body: "Read the blueprint, then approve it, ask for changes, or reject it." },
+    changes: { tone: "neutral", head: "Waiting for the requester to resubmit", body: `You asked for changes on v${v}: ${note ?? ""} This page shows the new version when it arrives.` },
+    approved: { tone: "success", head: `Approved v${v}`, body: "This review is closed." },
+    rejected: { tone: "danger", head: `Rejected v${v}`, body: note || "This review is closed." },
+  } as const;
+  const { tone, head, body } = s[view.status];
+  return <Notice tone={tone} title={head}>{body}</Notice>;
 }
 
-function DecisionForm({ enabled, busy, onDecide }: {
+/** The decision panel: the one card on the page, because it is the thing you act on. Approve is the pill. */
+export function DecisionForm({ enabled, busy, onDecide }: {
   enabled: boolean; busy: boolean; onDecide: (s: ReviewDecision, note: string) => Promise<boolean>;
 }) {
   const [note, setNote] = useState("");
   const [missingNote, setMissingNote] = useState<string>();
-  const field = useRef<HTMLTextAreaElement>(null);
+  const field = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
 
   const submit = async (status: ReviewDecision) => {
     const text = note.trim();
@@ -158,43 +182,41 @@ function DecisionForm({ enabled, busy, onDecide }: {
 
   const off = !enabled || busy;
   return (
-    <form className="flex flex-col gap-2 rounded-xl border border-zinc-200 bg-white p-4" onSubmit={(e) => e.preventDefault()}>
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Your decision</h2>
-      <label htmlFor="review-note" className="text-sm text-zinc-700">Note to the requester (required to request changes or reject)</label>
-      <textarea id="review-note" ref={field} rows={3} value={note} disabled={!enabled} maxLength={2000}
-        onChange={(e) => setNote(e.target.value)} aria-invalid={missingNote ? true : undefined} aria-describedby={missingNote ? "review-note-error" : undefined}
-        className="rounded-lg border border-zinc-300 p-2 text-sm text-zinc-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-zinc-50" />
-      {missingNote && <p id="review-note-error" role="alert" className="text-sm text-red-800">{missingNote}</p>}
-      <div className="flex flex-wrap gap-2">
-        <button type="button" disabled={off} onClick={() => submit("approved")} className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-40">Approve</button>
-        <button type="button" disabled={off} onClick={() => submit("changes")} className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-950 disabled:opacity-40">Request changes</button>
-        <button type="button" disabled={off} onClick={() => submit("rejected")} className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm font-medium text-red-950 disabled:opacity-40">Reject</button>
+    <form className="flex flex-col gap-(--space-3) rounded-(--radius-md) border border-hairline bg-paper-raised p-(--space-3)" onSubmit={(e) => e.preventDefault()}>
+      <h2 className="title text-ink">Your decision</h2>
+      <TextField id="review-note" label="Note to the requester (required to request changes or reject)" multiline rows={3}
+        value={note} onChange={setNote} disabled={!enabled} maxLength={2000} error={missingNote} fieldRef={field} />
+      <div className="flex flex-wrap items-center gap-(--space-2)">
+        <Button disabled={off} onClick={() => submit("approved")}>Approve</Button>
+        <Button kind="outline" disabled={off} onClick={() => submit("changes")}>Request changes</Button>
+        <Button kind="outline" danger disabled={off} onClick={() => submit("rejected")}>Reject</Button>
       </div>
-      {!enabled && <p className="text-xs text-zinc-500">Nothing to decide right now.</p>}
+      {!enabled && <p className="small font-normal text-ink-muted">Nothing to decide right now.</p>}
     </form>
   );
 }
 
-function Rounds({ view }: { view: ReviewView }) {
+/** Every round as a List row, newest last; the expert minutes in a label. */
+export function Rounds({ view }: { view: ReviewView }) {
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white p-4">
-      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-zinc-500">Rounds ({view.rounds.length})</h2>
-      <ol className="space-y-2 text-sm">
+    <section className="flex flex-col gap-(--space-2)">
+      <h2 className="label uppercase text-ink-muted">Rounds ({view.rounds.length})</h2>
+      <ol>
         {view.rounds.map((r) => (
-          <li key={r.version} className="rounded-lg bg-zinc-50 p-2">
-            <p className="flex justify-between gap-2">
-              <span className="font-medium text-zinc-900">v{r.version} · {OUTCOME[r.status]}</span>
-              {r.minutes !== undefined && <span className="text-zinc-700">{r.minutes} min</span>}
+          <li key={r.version} className="border-b border-hairline py-(--space-2)">
+            <p className="flex justify-between gap-(--space-2)">
+              <span className="small text-ink">v{r.version} · {OUTCOME[r.status]}</span>
+              {r.minutes !== undefined && <span className="label text-ink-soft">{r.minutes} min</span>}
             </p>
-            <p className="text-xs text-zinc-500">Submitted {when(r.submittedAt)} · opened {when(r.openedAt)} · decided {when(r.decidedAt)}</p>
-            {r.note && <p className="mt-1 text-xs text-zinc-700">{r.note}</p>}
+            <p className="label mt-(--space-1) text-ink-muted">Submitted {when(r.submittedAt)} · opened {when(r.openedAt)} · decided {when(r.decidedAt)}</p>
+            {r.note && <p className="small mt-(--space-1) font-normal text-ink-soft">{r.note}</p>}
           </li>
         ))}
       </ol>
-      <p className="mt-3 text-sm text-zinc-900">
+      <p className="small font-normal text-ink">
         <span className="font-semibold">{view.expertMinutes}</span> minutes from first open of the link to decision
-        <span className="block text-xs text-zinc-500">Total over decided rounds.</span>
+        <span className="label block text-ink-muted">Total over decided rounds.</span>
       </p>
-    </div>
+    </section>
   );
 }

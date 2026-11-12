@@ -11,9 +11,10 @@ export function SpecSheet({ number, title, revision, rows, headingLevel = 2 }: {
   return (
     <section className="text-ink">
       <div className="flex flex-wrap items-baseline gap-x-(--space-3) gap-y-(--space-1) border-b-2 border-ink pb-(--space-2)">
+        {/* Phones: number and revision share the first line, the title gets the full width below. */}
         <span className="label uppercase text-ink-muted">{number}</span>
-        <Heading className="heading-2 min-w-0 flex-1">{title}</Heading>
-        <span className="label uppercase text-ink-muted">{revision}</span>
+        <Heading className="heading-2 order-last min-w-0 basis-full sm:order-none sm:flex-1 sm:basis-0">{title}</Heading>
+        <span className="label ml-auto uppercase text-ink-muted sm:ml-0">{revision}</span>
       </div>
       <dl>
         {rows.map((r) => (

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SLOT_KEYS, SLOT_LABELS, type Blueprint, type Decision, type PushbackChoice, type Session, type SessionReview, type SlotKey } from "@/lib/types";
 import { BlueprintView, ExportBar, SourceItem } from "@/components/blueprint";
+import { ModeBadge } from "@/components/ModeBadge";
 import type { Catalog } from "@/lib/engine";
 import { reviewPath, type ClientAction, type SessionResponse } from "@/lib/api";
 import { SCENARIO } from "@/lib/scenario";
@@ -244,16 +245,6 @@ function DoneBanner({ review: r, onNewIdea }: { review: SessionReview; onNewIdea
       <button onClick={onNewIdea} className={SECONDARY}>New idea</button>
     </div>
   );
-}
-
-export function ModeBadge({ mode }: { mode: string }) {
-  if (mode === "offline") {
-    return <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-900">Offline script · no model calls</span>;
-  }
-  if (mode.startsWith("misconfigured")) {
-    return <span className="rounded-full bg-red-100 px-3 py-1 text-xs font-medium text-red-900">{mode}</span>;
-  }
-  return <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-900">Live models · {mode}</span>;
 }
 
 function IdeaForm({ text, setText, busy, onStart }: { text: string; setText: (s: string) => void; busy: boolean; onStart: (s: string) => void }) {

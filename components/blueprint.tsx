@@ -30,9 +30,9 @@ export function SourceItem({ src }: { src: Source }) {
         <span className="small text-ink">
           {src.url ? <a href={src.url} target="_blank" rel="noreferrer" className={LINK}>{src.name}</a> : src.name}
         </span>
-        <span className="flex shrink-0 gap-(--space-1)">
+        <span className="flex shrink-0 items-center gap-(--space-2)">
+          <span className="label text-ink-muted">by {src.decidedBy}</span>
           <LevelBadge level={src.level} />
-          <Tag>by {src.decidedBy}</Tag>
         </span>
       </div>
       <p className="small mt-(--space-1) font-normal text-ink-muted">{src.reason}</p>
@@ -40,10 +40,10 @@ export function SourceItem({ src }: { src: Source }) {
   );
 }
 
-/** A blueprint section: grouped by space and a hairline, headed by a mono label. No boxes. */
+/** A blueprint section: grouped by space and headed by a mono label (Kiln §5: space, not rules). No boxes. */
 function Section({ title, aside, children }: { title: string; aside?: ReactNode; children: ReactNode }) {
   return (
-    <section className="border-t border-hairline pt-(--space-3)">
+    <section>
       <div className="mb-(--space-2) flex flex-wrap items-center justify-between gap-(--space-2)">
         <h3 className="label uppercase text-ink-muted">{title}</h3>
         {aside}
@@ -59,7 +59,7 @@ function SpecRow({ slot, audience }: { slot: BlueprintSlot; audience: Audience }
     <div className="border-b border-hairline py-(--space-2) last:border-b-0">
       <dt className="flex flex-wrap items-center justify-between gap-(--space-2)">
         <span className="small text-ink-soft">{slot.label}</span>
-        <Tag>{byRequester ? (audience === "requester" ? "You" : "Requester") : "Filled by the tool"}</Tag>
+        <span className="label text-ink-muted">{byRequester ? (audience === "requester" ? "You" : "Requester") : "Filled by the tool"}</span>
       </dt>
       <dd className="body mt-(--space-1) whitespace-pre-wrap text-ink">
         {slot.value || <span className="text-ink-muted">Not answered</span>}
@@ -89,7 +89,7 @@ export function BlueprintView({ blueprint: bp, audience, status }: {
   );
 
   return (
-    <article className="flex flex-col gap-(--space-5)" aria-label={`Blueprint v${bp.version}`}>
+    <article className="flex flex-col gap-(--space-6)" aria-label={`Blueprint v${bp.version}`}>
       <div className="flex flex-col gap-(--space-3)">
         <SpecSheet
           number={bp.draft ? "Draft" : `v${bp.version}`}
@@ -207,7 +207,7 @@ export function ExportBar({ blueprint: bp }: { blueprint: Blueprint }) {
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-(--space-2) border-t border-hairline pt-(--space-3)">
+    <div className="flex flex-wrap items-center gap-(--space-2)">
       <Button kind="outline" onClick={() => download(blueprintMarkdown(bp), exportFileName(bp, "md"), "text/markdown")}>
         Download Markdown
       </Button>

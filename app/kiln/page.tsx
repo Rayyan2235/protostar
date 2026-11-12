@@ -4,14 +4,11 @@ import { notFound } from "next/navigation";
 import { Button } from "@/components/kiln/Button";
 import { Tag } from "@/components/kiln/Tag";
 import { SpecSheet } from "@/components/kiln/SpecSheet";
-import { LivingSky } from "@/components/kiln/LivingSky";
 import { TopBar } from "@/components/TopBar";
 import { TextField } from "@/components/TextField";
 import { ChatRow } from "@/components/ChatRow";
 import { Notice } from "@/components/Notice";
 import { ChoiceList } from "@/components/ChoiceList";
-import { MotionSwitch } from "@/components/MotionSwitch";
-import { StartScene } from "@/components/StartScene";
 
 export const metadata: Metadata = { title: "Kiln parts · Protostar" };
 
@@ -21,23 +18,8 @@ export default function KilnPreview() {
 
   return (
     <>
-      <TopBar title="Protostar" subtitle="Kiln parts · dev preview"><MotionSwitch /></TopBar>
+      <TopBar title="Protostar" subtitle="Kiln parts · dev preview" />
       <main className="mx-auto flex w-full max-w-6xl flex-col gap-(--space-6) px-(--space-3) py-(--space-5) sm:px-(--space-6)">
-        <Section name="StartScene · the world">
-          <StartScene />
-        </Section>
-
-        <Section name="LivingSky · fixed modes">
-          <div className="grid gap-(--space-3) sm:grid-cols-4">
-            {(["dawn", "day", "dusk", "night"] as const).map((m) => (
-              <div key={m} className="flex flex-col gap-(--space-1)">
-                <LivingSky label={`${m} sky`} mode={m} className="h-(--space-8) rounded-(--radius-md)" />
-                <span className="label uppercase text-ink-muted">{m}</span>
-              </div>
-            ))}
-          </div>
-        </Section>
-
         <Section name="Button">
           <div className="flex flex-wrap items-center gap-(--space-3)">
             <Button>Submit for review</Button>

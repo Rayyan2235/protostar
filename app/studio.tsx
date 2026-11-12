@@ -7,13 +7,10 @@ import { reviewPath, type ClientAction, type SessionResponse } from "@/lib/api";
 import { SCENARIO } from "@/lib/scenario";
 import { BlueprintView, ExportBar, SourceItem } from "@/components/blueprint";
 import { Button } from "@/components/kiln/Button";
-import { Tag } from "@/components/kiln/Tag";
 import { ChatRow } from "@/components/ChatRow";
 import { DecisionLog } from "@/components/DecisionLog";
 import { ModeBadge } from "@/components/ModeBadge";
-import { MotionSwitch } from "@/components/MotionSwitch";
 import { Notice } from "@/components/Notice";
-import { StartScene } from "@/components/StartScene";
 import { TextField } from "@/components/TextField";
 import { TopBar } from "@/components/TopBar";
 import { ScopePicker, ScopeSummary } from "./scope";
@@ -155,7 +152,6 @@ export default function Studio({ initialId, pending }: { initialId?: string; pen
     <>
       <TopBar title="Protostar" subtitle="Agent spec builder · prototype">
         {mode && <ModeBadge mode={mode} />}
-        <MotionSwitch />
         {session && <Button kind="link" onClick={startOver}>New idea</Button>}
       </TopBar>
 
@@ -194,7 +190,7 @@ export default function Studio({ initialId, pending }: { initialId?: string; pen
               )}
             </section>
 
-            <aside aria-label="Spec so far" className="flex min-w-0 flex-col gap-(--space-4) lg:col-span-4">
+            <aside aria-label="Spec so far" className="flex min-w-0 flex-col gap-(--space-5) lg:col-span-4">
               <SpecPanel session={session} busy={busy} onEdit={(key, value) => send({ type: "edit", key, value }, `#edit-${key}-btn`)} />
             </aside>
           </div>
@@ -204,15 +200,20 @@ export default function Studio({ initialId, pending }: { initialId?: string; pen
   );
 }
 
-/** Empty state (KILN-AGENT §6): the framed world, a heading-2, one sentence, the field, one pill. */
+/** The steps, as the margin's flow strip (mono, figure-numbered). */
+const FLOW = ["Interview", "Scope", "Tests", "Blueprint", "Review"];
+
+/**
+ * Start (K4, Rayyan): the loud moment is type. A display statement straight on paper, left-aligned,
+ * the field and one pill in the main column; a quiet margin with the flow strip and one honest aside.
+ */
 function StartScreen({ text, setText, busy, error, onStart }: {
   text: string; setText: (s: string) => void; busy: boolean; error?: string; onStart: (s: string) => void;
 }) {
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-(--space-4)">
-      <StartScene />
-      <form className="flex flex-col gap-(--space-3)" onSubmit={(e) => { e.preventDefault(); onStart(text); }}>
-        <h1 className="heading-2 text-ink">What do you keep answering over and over?</h1>
+    <div className="grid gap-(--space-6) lg:grid-cols-12 lg:pt-(--space-5)">
+      <form className="flex flex-col gap-(--space-4) lg:col-span-7" onSubmit={(e) => { e.preventDefault(); onStart(text); }}>
+        <h1 className="display text-ink">What do you keep answering <span className="text-ink-muted">over and over?</span></h1>
         <TextField id="idea" label="Describe the agent you wish existed, in one sentence." multiline rows={3} maxLength={1000}
           value={text} onChange={setText} placeholder="e.g. Something that answers change-of-major questions" />
         {error && <Notice tone="danger">{error}</Notice>}
@@ -221,6 +222,17 @@ function StartScreen({ text, setText, busy, error, onStart }: {
           <Button kind="link" onClick={() => setText(EXAMPLE_IDEA)}>Use Dana&apos;s example</Button>
         </div>
       </form>
+      <aside aria-label="How it works" className="flex flex-col gap-(--space-4) lg:col-span-3 lg:col-start-10 lg:pt-(--space-3)">
+        <ol>
+          {FLOW.map((step, i) => (
+            <li key={step} className="flex items-baseline gap-(--space-3) border-b border-hairline py-(--space-2) last:border-b-0">
+              <span className="label text-ink-muted">{String(i + 1).padStart(2, "0")}</span>
+              <span className="small text-ink">{step}</span>
+            </li>
+          ))}
+        </ol>
+        <p className="small font-normal text-ink-muted">Prototype. Public, Level 1–2 data only. Never student records.</p>
+      </aside>
     </div>
   );
 }
@@ -323,7 +335,8 @@ const TOOL_LABEL: Partial<Record<NonNullable<Decision["kind"]>, string>> = { fla
 export function Transcript({ log }: { log: Decision[] }) {
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    end.current?.scrollIntoView({ behavior: "smooth", block: "end" }); // returns a Promise in newer browsers; don't return it
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    end.current?.scrollIntoView({ behavior: still ? "auto" : "smooth", block: "end" }); // returns a Promise in newer browsers; don't return it
   }, [log.length]);
   const qNum = log.map((_, i) => log.slice(0, i + 1).filter((d) => d.kind === "question").length);
   return (
@@ -434,7 +447,7 @@ export function SpecPanel({ session, busy, onEdit }: { session?: Session; busy: 
               <div key={key} className="border-b border-hairline py-(--space-2) last:border-b-0">
                 <dt className="flex flex-wrap items-center justify-between gap-(--space-2)">
                   <span className="small text-ink-soft">{SLOT_LABELS[key]}</span>
-                  {slot && <Tag>{slot.filledBy === "requester" ? "You" : `Prefilled · ${Math.round((slot.confidence ?? 0) * 100)}%`}</Tag>}
+                  {slot && <span className="label text-ink-muted">{slot.filledBy === "requester" ? "You" : `Prefilled · ${Math.round((slot.confidence ?? 0) * 100)}%`}</span>}
                 </dt>
                 {editing === key && slot ? (
                   <dd className="mt-(--space-1)">
@@ -458,7 +471,7 @@ export function SpecPanel({ session, busy, onEdit }: { session?: Session; busy: 
         </dl>
       </section>
 
-      <section className="flex flex-col gap-(--space-2) border-t border-hairline pt-(--space-3)">
+      <section className="flex flex-col gap-(--space-2)">
         <h2 className="label uppercase text-ink-muted">Data sources</h2>
         {session?.sources.length ? (
           <ul>{session.sources.map((s) => <SourceItem key={s.name} src={s} />)}</ul>

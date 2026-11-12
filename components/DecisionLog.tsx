@@ -6,7 +6,7 @@ import type { Decision } from "@/lib/types";
  */
 export function DecisionLog({ log }: { log: Decision[] }) {
   return (
-    <details className="border-t border-hairline pt-(--space-3)">
+    <details>
       <summary className="label cursor-pointer uppercase text-ink-muted focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-accent">
         Decision log ({log.length})
       </summary>

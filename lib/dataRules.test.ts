@@ -296,3 +296,22 @@ test("a negation still hides a normalised term", () => {
   assert.deepEqual(editFlags("sources", "never read degree audits"), []);
   assert.deepEqual(editFlags("never", "Never ask for degree-audits, transcripts or student IDs"), []);
 });
+
+test("normalise strips every format character: soft hyphens and bidi controls too", () => {
+  assert.equal(normalise("de\u00adgree\u202e audit\u202c"), "degree audit");
+  assert.deepEqual(ruleIds(editFlags("sources", "students paste their degree\u00adaudit")), ["degree-audit"]);
+  assert.deepEqual(ruleIds(editFlags("sources", "students paste their de\u00adgree audit")), ["degree-audit"]);
+});
+
+test("known no-hits, pinned (ADR 0011): a hyphen or slash between letters joins a word", () => {
+  // The same rule lets "self-report" and "and/or" through; documented trade-off, no fix planned.
+  assert.deepEqual(editFlags("sources", "No API-students paste their degree audit"), []);
+  assert.deepEqual(editFlags("sources", "No API/students paste their degree audit"), []);
+});
+
+test("normalise runs before the negation check (pinned)", () => {
+  // Zero-width space removed: the gap reads like a plain space, the parked run-on case (ADR 0011).
+  assert.deepEqual(editFlags("sources", "No API\u200b students paste their degree audit"), []);
+  // "never\u200bread" becomes "neverread": no negation word, so it hits (fails closed).
+  assert.deepEqual(ruleIds(editFlags("sources", "never\u200bread transcripts")), ["transcript"]);
+});

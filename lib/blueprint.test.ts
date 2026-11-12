@@ -179,3 +179,35 @@ test("draft instructions are a template built only from Dana's words, the rule a
   assert.doesNotMatch(text, /You must never/);
   assert.deepEqual(bp(s).instructions, { text, draftedBy: "template" });
 });
+
+// --- Title cut at a word (BE-6) -------------------------------------------------------------
+
+const titleFor = (idea: string) => bp({ ...dana(), idea }).title;
+
+test("a long first line is cut at a word, not mid-word", () => {
+  const idea = "Something that helps students figure out if they can switch into Finance and what the entrance rules are";
+  const title = titleFor(idea);
+  assert.ok(title.length <= 80);
+  assert.ok(title.endsWith("…"));
+  const kept = title.slice(0, -1);
+  assert.ok(idea.startsWith(kept));
+  assert.equal(idea[kept.length], " ", `cut mid-word: ${JSON.stringify(title)}`);
+});
+
+test("one long token keeps the hard cut", () => {
+  const title = titleFor("x".repeat(100));
+  assert.equal(title, `${"x".repeat(79)}…`);
+});
+
+test("a first line of 80 characters or less is unchanged", () => {
+  const exactly80 = `${"word ".repeat(15)}words`;
+  assert.equal(exactly80.length, 80);
+  assert.equal(titleFor(exactly80), exactly80);
+  assert.equal(titleFor("Finance helper"), "Finance helper");
+});
+
+test("no punctuation is left dangling before the ellipsis", () => {
+  const title = titleFor(`${"word ".repeat(13)}admissions, then more text that runs well past the limit`);
+  assert.equal(title, `${"word ".repeat(13)}admissions…`);
+  assert.doesNotMatch(title, /[\s,;:-]…$/);
+});

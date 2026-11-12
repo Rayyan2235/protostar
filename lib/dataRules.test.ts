@@ -166,10 +166,10 @@ test("unspaced hyphens and slashes are not boundaries; real negations still hide
 
 /** TESTER-BE's separator table (be4b-attack.mts): none of these may carry a negation across. */
 const SEPARATORS = [
-  " -- ", "- ", " -", "… ", " • ", " | ", " [", " {", " → ", " -> ", " > ", " - ",
-  " ‒ ", " ― ", " − ", " ‐ ", " ", " ", "\v", "\f",
+  " -- ", "- ", " -", "… ", " \u2022 ", " | ", " [", " {", " \u2192 ", " -> ", " > ", "\u00a0-\u00a0",
+  " \u2012 ", " \u2015 ", " \u2212 ", " \u2010 ", "\u2028", "\u2029", "\v", "\f",
   " and ", " or ", " nor ", " but ", " so ", " then ", " however ", " though ", " instead ", " yet ", " except ",
-  " /", " // ", "; ", "； ", "： ", "。 ",
+  " /", " // ", "\u037e ", "\uff1b ", "\uff1a ", "\u3002 ",
 ];
 /** and/or/nor keep a never answer's negation ("never read transcripts and degree audits"). */
 const NEVER_KEEPS = new Set([" and ", " or ", " nor "]);
@@ -236,12 +236,12 @@ const TERM_VARIANTS: [string, (term: string) => string][] = [
   ["hyphen", (t) => t.replace(/ /g, "-")],
   ["double space", (t) => t.replace(/ /g, "  ")],
   ["line break", (t) => t.replace(/ /g, "\n")],
-  ["NBSP", (t) => t.replace(/ /g, " ")],
-  ["U+2011", (t) => t.replace(/ /g, "‑")],
-  ["U+200B", (t) => t.replace(/ /g, "​")],
+  ["NBSP", (t) => t.replace(/ /g, "\u00a0")],
+  ["U+2011", (t) => t.replace(/ /g, "\u2011")],
+  ["U+200B", (t) => t.replace(/ /g, "\u200b")],
   ["en dash", (t) => t.replace(/ /g, "–")],
   ["em dash", (t) => t.replace(/ /g, "—")],
-  ["minus sign", (t) => t.replace(/ /g, "−")],
+  ["minus sign", (t) => t.replace(/ /g, "\u2212")],
   ["upper case", (t) => t.toUpperCase()],
 ];
 
@@ -258,10 +258,10 @@ test("every multi-word record term is caught however the space is written", () =
 
 test("obfuscated terms from TESTER-BE's be4c-attack table hit", () => {
   for (const text of [
-    "students paste their degree​audit",
-    "students paste their degree audit",
+    "students paste their degree\u200baudit",
+    "students paste their degree\u00a0audit",
     "students paste their degree-audit",
-    "students paste their degree‑audit",
+    "students paste their degree\u2011audit",
     "students paste their DEGREE AUDIT",
     "students paste their degree  audit",
     "students paste their degree\naudit",
@@ -278,8 +278,8 @@ test("obfuscated terms from TESTER-BE's be4c-attack table hit", () => {
 });
 
 test("model-named sources go through the same normalisation", () => {
-  assert.equal(classifySource({ name: "Pasted DEGREE AUDIT" }).ruleId, "degree-audit");
-  assert.equal(classifySource({ name: "student‑id lookup" }).ruleId, "student-id");
+  assert.equal(classifySource({ name: "Pasted DEGREE\u00a0AUDIT" }).ruleId, "degree-audit");
+  assert.equal(classifySource({ name: "student\u2011id lookup" }).ruleId, "student-id");
 });
 
 test("no rule pattern contains a literal space", () => {
@@ -287,17 +287,17 @@ test("no rule pattern contains a literal space", () => {
 });
 
 test("normalise: compatibility forms, spaces and zero-width characters; line breaks stay", () => {
-  assert.equal(normalise("ＤＥＧＲＥＥ"), "DEGREE");
-  assert.equal(normalise("degree audit"), "degree audit");
-  assert.equal(normalise("degree​audit"), "degreeaudit");
-  assert.equal(normalise("a‌‍⁠﻿b"), "ab");
-  assert.equal(normalise("line\nbreak sep\r\ntab\t"), "line\nbreak sep\r\ntab\t");
+  assert.equal(normalise("\uff24\uff25\uff27\uff32\uff25\uff25"), "DEGREE");
+  assert.equal(normalise("degree\u00a0audit"), "degree audit");
+  assert.equal(normalise("degree\u200baudit"), "degreeaudit");
+  assert.equal(normalise("a\u200c\u200d\u2060\ufeffb"), "ab");
+  assert.equal(normalise("line\nbreak\u2028sep\r\ntab\t"), "line\nbreak\u2028sep\r\ntab\t");
 });
 
 test("a negation still hides a normalised term", () => {
   assert.deepEqual(editFlags("sources", "never read degree-audit data"), []);
-  assert.deepEqual(editFlags("sources", "never read degree audits"), []);
-  assert.deepEqual(editFlags("never", "Never ask for degree-audits, transcripts or student IDs"), []);
+  assert.deepEqual(editFlags("sources", "never read degree\u00a0audits"), []);
+  assert.deepEqual(editFlags("never", "Never ask for degree-audits, transcripts or student\u00a0IDs"), []);
 });
 
 test("normalise strips every format character: soft hyphens and bidi controls too", () => {

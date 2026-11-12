@@ -46,6 +46,7 @@ Steps: `idea -> interview -> scope -> tests -> blueprint -> review -> done`. Cos
 - `npm run dev` · `npm test` · `npm run typecheck` · `npm run lint`
 - `LLM_PROVIDER=offline` in `.env`: scripted interviewer, no model calls, labeled in the UI. For UI work only; the demo uses real models.
 - `npm run smoke`: one structured call per configured model (needs `.env`)
+- `npm run report -- <session-id>`: per-step timings from a session's decision log (for user tests)
 
 <!-- BEGIN:nextjs-agent-rules -->
 

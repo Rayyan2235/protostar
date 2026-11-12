@@ -31,10 +31,13 @@ export function normalise(text: string): string {
   return text.normalize("NFKC").replace(/\p{Cf}/gu, "").replace(/\p{Zs}/gu, " ");
 }
 
-/** The gap inside a multi-word term: any run of whitespace or hyphens, possibly none ("degree​audit"). */
-const SEP = String.raw`[\s\-‐‑]*`;
-/** A rule pattern from a template: "_" is the gap inside a term, "'" any apostrophe. Whole words, any case. */
-const term = (src: string) => new RegExp(String.raw`\b(${src.replace(/_/g, SEP).replace(/'/g, "['’]")})\b`, "i");
+/**
+ * The gap inside a multi-word term: any run of whitespace, Unicode dashes (\p{Pd}) or the
+ * minus sign U+2212 (not in Pd), possibly none: "degree" + U+200B + "audit" normalises to "degreeaudit".
+ */
+const SEP = String.raw`[\s\p{Pd}\u2212]*`;
+/** A rule pattern from a template: "_" is the gap inside a term, "'" any apostrophe. Whole words, any case, Unicode mode. */
+const term = (src: string) => new RegExp(String.raw`\b(${src.replace(/_/g, SEP).replace(/'/g, "['\u2019]")})\b`, "iu");
 
 // Highest level first: the first match wins. Patterns match data sources, not topics:
 // "medical withdrawal" as a hand-off topic is fine; "medical records" as a source is not.
@@ -75,9 +78,9 @@ const GAP_MAX = 40;
 /** An ASCII hyphen or slash with a letter or digit on both sides is part of a word ("self-report", "and/or"). */
 const INNER_JOIN = /(?<=[\p{L}\p{Nd}])[-/](?=[\p{L}\p{Nd}])/gu;
 /** The only characters a negation may reach across: letters, digits, plain spaces, apostrophes. */
-const GAP_CHARS = /^[\p{L}\p{Nd} '’]*$/u;
+const GAP_CHARS = /^[\p{L}\p{Nd} '\u2019]*$/u;
 /** The never slot also allows commas: "Never ask for transcripts, degree audits or student IDs". */
-const GAP_CHARS_NEVER = /^[\p{L}\p{Nd} '’,]*$/u;
+const GAP_CHARS_NEVER = /^[\p{L}\p{Nd} '\u2019,]*$/u;
 /** Words that start a new thought, in every slot. */
 const TURN_WORDS = /\b(?:but|so|then|however|though|instead|yet|except)\b/i;
 /** Words that join a new item; they keep the negation only in the never slot. "and/or" counts. */
@@ -113,7 +116,7 @@ export function scanText(text: string, slot?: SlotKey): Source[] {
   const hits: Source[] = [];
   const norm = normalise(text); // matching and the negation gap both read the normalised text
   for (const rule of RULES.filter((r) => r.level >= 3)) {
-    const re = new RegExp(rule.pattern.source, "gi");
+    const re = new RegExp(rule.pattern.source, rule.pattern.flags + "g");
     for (const m of norm.matchAll(re)) {
       if (negated(norm, m.index, slot)) continue;
       hits.push({ name: rule.label, level: rule.level, decidedBy: "rule", reason: rule.reason, ruleId: rule.id });

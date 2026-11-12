@@ -34,7 +34,9 @@ test("free-text scan catches record mentions the model might miss", () => {
 
 test("free-text scan ignores topics and negated mentions", () => {
   assert.deepEqual(scanText("Appeals, medical or special circumstances go to me."), []);
-  assert.deepEqual(scanText("It must never ask for a transcript or their student ID."), []);
+  // BE-4c: "or" ends the negation outside the never slot (pinned fail-closed hit); in never it stays hidden.
+  assert.deepEqual(ruleIds(scanText("It must never ask for a transcript or their student ID.")), ["student-id"]);
+  assert.deepEqual(editFlags("never", "It must never ask for a transcript or their student ID."), []);
   assert.deepEqual(scanText("Don't read degree audits."), []);
 });
 
@@ -97,7 +99,8 @@ test("a negation in an earlier clause doesn't hide a record source", () => {
 
 test("a negation in the same clause still hides the term", () => {
   assert.deepEqual(scanText("never read transcripts"), []);
-  assert.deepEqual(scanText("don't use transcripts or degree audits"), []);
+  // BE-4c: "or" now ends the negation outside the never slot (pinned fail-closed hit).
+  assert.deepEqual(ruleIds(scanText("don't use transcripts or degree audits")), ["degree-audit"]);
 });
 
 test("as a sources answer, a comma starts a new clause: fails closed", () => {
@@ -151,9 +154,68 @@ test("pinned fail-closed hits in the never slot (parked false positives)", () =>
 
 test("unspaced hyphens and slashes are not boundaries; real negations still hide the term", () => {
   assert.deepEqual(editFlags("sources", "never read transcripts"), []);
-  assert.deepEqual(editFlags("sources", "don't use transcripts or degree audits"), []);
-  assert.deepEqual(editFlags("sources", "never read transcripts and/or degree audits"), []);
+  // BE-4c: "or" now ends the negation outside the never slot (pinned fail-closed hit).
+  assert.deepEqual(ruleIds(editFlags("sources", "don't use transcripts or degree audits")), ["degree-audit"]);
+  assert.deepEqual(ruleIds(editFlags("sources", "never read transcripts and/or degree audits")), ["degree-audit"]);
   assert.deepEqual(editFlags("sources", "students self-report GPA, never transcripts"), []);
   assert.deepEqual(editFlags("never", "Never ask for transcripts, degree audits or student IDs"), []);
   assert.deepEqual(editFlags("never", "It must never ask for, look up, or read transcripts"), []);
+});
+
+// --- Negation allow list (BE-4c, contract §6) --------------------------------------------
+
+/** TESTER-BE's separator table (be4b-attack.mts): none of these may carry a negation across. */
+const SEPARATORS = [
+  " -- ", "- ", " -", "… ", " • ", " | ", " [", " {", " → ", " -> ", " > ", " - ",
+  " ‒ ", " ― ", " − ", " ‐ ", " ", " ", "\v", "\f",
+  " and ", " or ", " nor ", " but ", " so ", " then ", " however ", " though ", " instead ", " yet ", " except ",
+  " /", " // ", "; ", "； ", "： ", "。 ",
+];
+/** and/or/nor keep a never answer's negation ("never read transcripts and degree audits"). */
+const NEVER_KEEPS = new Set([" and ", " or ", " nor "]);
+
+test("a negation reaches a term only across letters, digits, spaces and apostrophes (37 separators x 3 slots)", () => {
+  assert.equal(SEPARATORS.length, 37);
+  const wrong: string[] = [];
+  for (const slot of ["sources", "never", "handoff"] as SlotKey[]) {
+    for (const sep of SEPARATORS) {
+      const hit = editFlags(slot, `No API${sep}students paste their degree audit`).length > 0;
+      const want = !(slot === "never" && NEVER_KEEPS.has(sep));
+      if (hit !== want) wrong.push(`${slot} ${JSON.stringify(sep)}: want ${want ? "hit" : "none"}`);
+    }
+  }
+  assert.deepEqual(wrong, []);
+});
+
+test("real negations still hide the term, in sources and in never", () => {
+  const texts = [
+    "never read transcripts",
+    "students self-report GPA, never transcripts",
+    "Never use degree-audit data",
+    "Don't read the student's transcript (official or unofficial)",
+    "No transcripts - ever",
+    "Never read the student’s transcript",
+  ];
+  for (const slot of ["sources", "never"] as SlotKey[]) {
+    for (const t of texts) assert.deepEqual(editFlags(slot, t), [], `${slot}: ${JSON.stringify(t)}`);
+  }
+});
+
+test("and, or, nor and commas keep a negation only in the never slot", () => {
+  for (const t of [
+    "never read transcripts and degree audits",
+    "never read transcripts and/or degree audits",
+    "Never ask for transcripts, degree audits or student IDs",
+  ]) {
+    assert.deepEqual(editFlags("never", t), [], JSON.stringify(t));
+  }
+});
+
+test("pinned fail-closed hits (deliberate)", () => {
+  assert.deepEqual(ruleIds(editFlags("sources", "don't use transcripts or degree audits")), ["degree-audit"]);
+  assert.deepEqual(ruleIds(scanText("don't use transcripts or degree audits")), ["degree-audit"]);
+  for (const slot of ["sources", "never"] as SlotKey[]) {
+    assert.deepEqual(ruleIds(editFlags(slot, "Never: transcripts")), ["transcript"], `${slot}: colon`);
+    assert.deepEqual(ruleIds(editFlags(slot, "never\ttranscripts")), ["transcript"], `${slot}: tab`);
+  }
 });

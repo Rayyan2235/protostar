@@ -380,3 +380,11 @@ test("a second flag resolved with (a) again keeps one self-report source", () =>
   const names = s.sources.map((x) => x.name);
   assert.equal(new Set(names).size, names.length, "source names are unique");
 });
+
+test("the self-report source is not added next to a kept source with the same name in another case or spacing", () => {
+  const self = SCENARIO.pushback.selfReportSource;
+  const lookalike: Source = { ...self, name: `${self.name.toUpperCase()} ` };
+  const s = run(started(), turn({ sources: [lookalike, { ...audit, ruleId: "degree-audit" }] }), { type: "RESOLVE_PUSHBACK", choice: "selfreport", at });
+  const norm = (n: string) => n.trim().toLowerCase();
+  assert.equal(s.sources.filter((x) => norm(x.name) === norm(self.name)).length, 1);
+});

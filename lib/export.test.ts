@@ -48,7 +48,7 @@ const blueprint: Blueprint = {
     { at, who: "requester", what: "Something that helps students", kind: "idea" },
     { at, who: "reviewer", what: "Opened blueprint v1.", kind: "review" },
   ],
-  costNote: "Estimate from public list prices (Anthropic public list prices, 2026-11-03). Not a quote.",
+  costNote: "Estimate from Anthropic public list prices (same rates on Microsoft Foundry), as of 2026-11-03. Not a quote.",
 };
 
 test("Markdown has every section in order", () => {

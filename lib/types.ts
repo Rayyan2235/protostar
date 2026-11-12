@@ -141,7 +141,7 @@ export interface Blueprint {
   tests: TestsSummary;
   /** Session log at build time. */
   log: Decision[];
-  /** "Estimate from public list prices (<PRICE_SOURCE>, <PRICES_AS_OF>). Not a quote." */
+  /** "Estimate from <PRICE_SOURCE>, as of <PRICES_AS_OF>. Not a quote." */
   costNote: string;
 }
 

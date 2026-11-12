@@ -133,8 +133,11 @@ test("every offline turn fixture parses with TurnSchema, at every stage of the D
   for (const s of all) TurnSchema.parse(offlineTurnRaw(s));
 });
 
+/** GOLDEN was captured as JSON, which drops undefined keys (the old turn also had nextQuestion: undefined). */
+const asJson = <T>(x: T): T => JSON.parse(JSON.stringify(x));
+
 test("golden: parse + toTurn gives exactly what the old offline script returned", () => {
-  assert.deepEqual(stages().map((s) => toTurn(TurnSchema.parse(offlineTurnRaw(s)))), GOLDEN);
+  assert.deepEqual(asJson(stages().map((s) => toTurn(TurnSchema.parse(offlineTurnRaw(s))))), GOLDEN);
 });
 
 test("interviewTurn in offline mode goes through complete() and is labelled offline", async () => {
@@ -143,7 +146,7 @@ test("interviewTurn in offline mode goes through complete() and is labelled offl
   try {
     const s = stages()[0];
     const r = await interviewTurn(s, s.idea);
-    assert.deepEqual(r, { turn: GOLDEN[0], model: OFFLINE_SOURCE, offline: true });
+    assert.deepEqual(asJson(r), { turn: GOLDEN[0], model: OFFLINE_SOURCE, offline: true });
   } finally {
     if (prev === undefined) delete process.env.LLM_PROVIDER; else process.env.LLM_PROVIDER = prev;
   }

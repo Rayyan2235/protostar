@@ -245,3 +245,10 @@ test("engine: blueprintFor is undefined before the blueprint step", async () => 
   const s = await danaAtScope();
   assert.equal(blueprintFor(s), undefined);
 });
+
+test("engine: a reviewer body that isn't an object is a 400 with a plain message", async () => {
+  for (const body of [undefined, null, "open", 3, ["open"]]) {
+    const r = await reviewAct("any-id", body);
+    assert.deepEqual([r.status, r.body.error], [400, "Invalid request."], JSON.stringify(body));
+  }
+});

@@ -144,7 +144,8 @@ test("tests are honestly not run; cost note names the price source", () => {
   const b = bp();
   assert.deepEqual(TESTS_NOT_RUN, { status: "not-run", note: "Not run yet: the test run needs live models." });
   assert.deepEqual(b.tests, TESTS_NOT_RUN);
-  assert.equal(b.costNote, `Estimate from public list prices (${PRICE_SOURCE}, ${PRICES_AS_OF}). Not a quote.`);
+  assert.equal(b.costNote, `Estimate from Anthropic public list prices (same rates on Microsoft Foundry), as of ${PRICES_AS_OF}. Not a quote.`);
+  assert.ok(b.costNote.includes(PRICE_SOURCE));
 });
 
 test("header fields: version, draft, builtAt, title from the first line, idea, knowledge, log", () => {
@@ -174,5 +175,7 @@ test("draft instructions are a template built only from Dana's words, the rule a
   }
   assert.ok(text.includes("Guided eligibility check"));
   assert.ok(!text.includes(".."), "no doubled periods");
+  assert.ok(text.split(/\r?\n/).includes(`Must never (from the requester): ${ANSWERS.never}.`), text);
+  assert.doesNotMatch(text, /You must never/);
   assert.deepEqual(bp(s).instructions, { text, draftedBy: "template" });
 });

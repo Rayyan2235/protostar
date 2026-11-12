@@ -239,6 +239,9 @@ const TERM_VARIANTS: [string, (term: string) => string][] = [
   ["NBSP", (t) => t.replace(/ /g, " ")],
   ["U+2011", (t) => t.replace(/ /g, "‑")],
   ["U+200B", (t) => t.replace(/ /g, "​")],
+  ["en dash", (t) => t.replace(/ /g, "–")],
+  ["em dash", (t) => t.replace(/ /g, "—")],
+  ["minus sign", (t) => t.replace(/ /g, "−")],
   ["upper case", (t) => t.toUpperCase()],
 ];
 

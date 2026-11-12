@@ -10,7 +10,7 @@
  * is used only for sources no rule matches, and the result says which one decided. The
  * pushback therefore never depends on a model run.
  */
-import type { Level, Pushback, Source } from "./types";
+import type { Level, Pushback, SlotKey, Source } from "./types";
 
 export interface Rule {
   id: string;
@@ -54,17 +54,31 @@ export function classifySource(
 }
 
 const NEGATION = /\b(never|not|no|don'?t|do not|doesn'?t|without|avoid|refuse|stop)\b[^.;!?]{0,40}$/i;
+/** Clause boundaries: sentence ends, ; and :, and "but". */
+const CLAUSE_END = /[.!?](?=\s|$)|[;:]|\bbut\b/gi;
+/** Every slot but never also splits at commas: "No problem, students paste their audit". */
+const CLAUSE_END_COMMA = /[.!?](?=\s|$)|[;:,]|\bbut\b/gi;
+
+/** The requester's text from the start of the clause up to `index`. */
+function clauseBefore(text: string, index: number, slot?: SlotKey): string {
+  const before = text.slice(0, index);
+  let start = 0;
+  for (const m of before.matchAll(slot === "never" ? CLAUSE_END : CLAUSE_END_COMMA)) start = m.index + m[0].length;
+  return before.slice(start);
+}
 
 /**
  * Safety net over the requester's own words: Level 3–4 rule hits in free text, even if
- * the model failed to extract them. Skips negated mentions ("never read transcripts").
+ * the model failed to extract them. A negation hides a hit only in the same clause
+ * ("never read transcripts"); otherwise it fails closed. In the never slot, commas don't
+ * split the clause, so "Never ask for transcripts, degree audits or student IDs" passes.
  */
-export function scanText(text: string): Source[] {
+export function scanText(text: string, slot?: SlotKey): Source[] {
   const hits: Source[] = [];
   for (const rule of RULES.filter((r) => r.level >= 3)) {
     const re = new RegExp(rule.pattern.source, "gi");
     for (const m of text.matchAll(re)) {
-      if (NEGATION.test(text.slice(0, m.index))) continue;
+      if (NEGATION.test(clauseBefore(text, m.index, slot))) continue;
       hits.push({ name: rule.label, level: rule.level, decidedBy: "rule", reason: rule.reason, ruleId: rule.id });
       break;
     }
@@ -81,11 +95,13 @@ export function gate(
   requesterText: string,
   extracted: { name: string; url?: string; suggestedLevel?: Level; reason?: string }[],
   pushback?: Pushback,
+  /** The slot this text answers, if any (undefined for the idea). */
+  slot?: SlotKey,
 ): Source[] {
   const resolved = new Set(pushback && !pushback.blocking ? pushback.flaggedRules : []);
   const out: Source[] = [];
   const seenRules = new Set<string>();
-  for (const src of [...extracted.map(classifySource), ...scanText(requesterText)]) {
+  for (const src of [...extracted.map(classifySource), ...scanText(requesterText, slot)]) {
     if (src.ruleId && src.ruleId !== "default") {
       if (resolved.has(src.ruleId) || seenRules.has(src.ruleId)) continue;
       if (src.level >= 3) seenRules.add(src.ruleId); // collapse duplicate record hits only
@@ -93,4 +109,16 @@ export function gate(
     out.push(src);
   }
   return out;
+}
+
+/**
+ * Level 3–4 hits for a requester edit (contract §6, edit gate).
+ * - A `sources` edit is scanned with no resolved-rule filter: resolving the pushback
+ *   never lets a record source back in through an edit.
+ * - Any other slot keeps the filter, so a resolved topic (e.g. a hand-off for
+ *   "anything about their degree audit") can be written down.
+ */
+export function editFlags(key: SlotKey, value: string, pushback?: Pushback): Source[] {
+  if (key === "sources") return scanText(value, key);
+  return gate(value, [], pushback, key).filter((s) => s.level >= 3);
 }

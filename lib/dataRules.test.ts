@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { classifySource, gate, scanText } from "./dataRules";
+import { classifySource, editFlags, gate, scanText } from "./dataRules";
 import type { Pushback } from "./types";
 
 test("degree audits are Level 3 by rule, whatever the model suggests", () => {
@@ -52,4 +52,74 @@ test("a resolved rule does not re-flag", () => {
 test("a still-blocking pushback does not suppress anything", () => {
   const pb: Pushback = { blocking: true, flagged: ["Degree audits"], flaggedRules: ["degree-audit"], options: ["selfreport", "route"], attempts: 1 };
   assert.equal(gate("their degree audit", [], pb).length, 1);
+});
+
+// --- Edit gate (contract §6, Planner B B1) ---------------------------------------------
+
+const resolvedAudit: Pushback = {
+  blocking: false, flagged: ["Students paste their degree audit"], flaggedRules: ["degree-audit"],
+  options: ["selfreport", "route"], choice: "selfreport", attempts: 0,
+};
+
+test("editFlags: a sources edit can't re-add a resolved record source", () => {
+  const hits = editFlags("sources", "students paste their degree audit", resolvedAudit);
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].level, 3);
+  assert.equal(hits[0].ruleId, "degree-audit");
+  assert.equal(hits[0].decidedBy, "rule");
+});
+
+test("editFlags: a hand-off topic about a resolved rule passes", () => {
+  assert.deepEqual(editFlags("handoff", "anything about their degree audit", resolvedAudit), []);
+});
+
+test("editFlags: the same hand-off text flags when nothing is resolved", () => {
+  const hits = editFlags("handoff", "anything about their degree audit");
+  assert.deepEqual(hits.map((h) => [h.ruleId, h.level]), [["degree-audit", 3]]);
+});
+
+test("editFlags: negated and Level 1–2 mentions pass", () => {
+  assert.deepEqual(editFlags("sources", "never read transcripts"), []);
+  assert.deepEqual(editFlags("sources", "the bulletin and our SharePoint FAQ"), []);
+});
+
+// --- Negation stays in its clause (BE-4 amendment 3) -------------------------------------
+
+const ruleIds = (hits: { ruleId?: string }[]) => hits.map((h) => h.ruleId);
+
+test("a negation in an earlier clause doesn't hide a record source", () => {
+  assert.deepEqual(ruleIds(scanText("No problem, students paste their degree audit")), ["degree-audit"]);
+  assert.deepEqual(ruleIds(scanText("We do not store it, but advisors read the degree audit")), ["degree-audit"]);
+  assert.deepEqual(ruleIds(scanText("Not sure yet: students upload transcripts")), ["transcript"]);
+  assert.deepEqual(ruleIds(scanText("No grades, transcripts get pasted in")), ["transcript"]);
+  assert.deepEqual(ruleIds(scanText("Not names, degree audits only")), ["degree-audit"]);
+});
+
+test("a negation in the same clause still hides the term", () => {
+  assert.deepEqual(scanText("never read transcripts"), []);
+  assert.deepEqual(scanText("don't use transcripts or degree audits"), []);
+});
+
+test("as a sources answer, a comma starts a new clause: fails closed", () => {
+  const text = "Never ask for transcripts, degree audits or student IDs";
+  assert.deepEqual(ruleIds(scanText(text, "sources")), ["degree-audit", "student-id"]);
+  assert.deepEqual(ruleIds(editFlags("sources", text)), ["degree-audit", "student-id"]);
+});
+
+test("as a never answer, commas don't split the clause", () => {
+  assert.deepEqual(editFlags("never", "Never ask for transcripts, degree audits or student IDs"), []);
+  assert.deepEqual(editFlags("never", "It must never ask for, look up, or read transcripts"), []);
+  assert.deepEqual(editFlags("never", "Never read transcripts, degree audits"), []);
+});
+
+test("as a never answer, ; and : and but still split the clause", () => {
+  const text = "It must never give admission advice; students will paste their degree audit";
+  assert.deepEqual(ruleIds(scanText(text, "never")), ["degree-audit"]);
+  assert.deepEqual(ruleIds(editFlags("never", text)), ["degree-audit"]);
+});
+
+test("gate passes the slot to the text scan", () => {
+  const text = "Never ask for transcripts, degree audits or student IDs";
+  assert.deepEqual(gate(text, [], undefined, "never"), []);
+  assert.deepEqual(ruleIds(gate(text, [], undefined, "sources")), ["degree-audit", "student-id"]);
 });

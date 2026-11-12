@@ -20,8 +20,9 @@ export function ScopePicker({ session, catalog, busy, onChoose }: {
   onChoose: (scope: ScopeKey, role: ModelRole, knobs: Knobs) => void;
 }) {
   const rec = recommendedScope(session.pushback?.choice);
-  const [scope, setScope] = useState<ScopeKey>(rec.scope);
-  const [role, setRole] = useState<ModelRole>(scopeByKey(rec.scope).model);
+  // A reopened scope starts from what the requester chose before, not the recommendation.
+  const [scope, setScope] = useState<ScopeKey>(session.scope ?? rec.scope);
+  const [role, setRole] = useState<ModelRole>(session.model?.role ?? scopeByKey(session.scope ?? rec.scope).model);
   const [raw, setRaw] = useState({ students: String(session.knobs.studentsPerMonth), convs: String(session.knobs.convsPerStudent) });
   const knobs = cleanKnobs({ studentsPerMonth: Number(raw.students), convsPerStudent: Number(raw.convs) });
   const sc = scopeByKey(scope);

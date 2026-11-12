@@ -1,49 +1,46 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Decision, Session, SlotKey, Source } from "@/lib/types";
+import { SLOT_KEYS, SLOT_LABELS, type Blueprint, type Decision, type PushbackChoice, type Session, type SessionReview, type SlotKey } from "@/lib/types";
+import { BlueprintView, ExportBar, SourceItem } from "@/components/blueprint";
 import type { Catalog } from "@/lib/engine";
+import { reviewPath, type ClientAction, type SessionResponse } from "@/lib/api";
+import { SCENARIO } from "@/lib/scenario";
 import { ScopePicker, ScopeSummary } from "./scope";
 
-type ApiResult = { session?: Session; error?: string; mode?: string; catalog?: Catalog };
-
-const SLOT_LABELS: Record<SlotKey, string> = {
-  users: "Who uses it",
-  top: "Top questions",
-  never: "Must never",
-  examples: "Great vs. bad answer",
-  sources: "Reads from",
-  handoff: "Hands off when",
-};
-const SLOT_ORDER: SlotKey[] = ["users", "top", "never", "examples", "sources", "handoff"];
-
-const PUSHBACK_RULES = {
-  selfreport: "Never ask for, read, or store student records. Use only the GPA and credits the student states in the chat.",
-  route: "Never read pasted records. Questions about a specific student's record go to an advising appointment.",
-} as const;
+type ResolveChoice = PushbackChoice | "keep";
 
 const EXAMPLE_IDEA = "Something that helps students figure out if they can switch into Finance.";
+/** How often a waiting page checks for news. */
+export const POLL_MS = 5000;
+/** Steps where the main panel shows the blueprint instead of the interview. */
+const BLUEPRINT_STEPS: Session["step"][] = ["blueprint", "review", "done"];
 
-async function call(path: string, body?: unknown): Promise<ApiResult> {
+const PRIMARY = "rounded-lg bg-indigo-600 px-4 py-2 font-medium text-white disabled:opacity-40";
+const SECONDARY = "rounded-lg border border-zinc-300 bg-white px-4 py-2 font-medium text-zinc-800 hover:border-zinc-400 disabled:opacity-40";
+
+async function call(path: string, body?: unknown): Promise<SessionResponse> {
   const res = await fetch(path, body === undefined ? undefined : {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
   });
-  const data = (await res.json().catch(() => ({}))) as ApiResult;
+  const data = (await res.json().catch(() => ({}))) as SessionResponse;
   if (!res.ok && !data.error) data.error = `Request failed (${res.status})`;
   return data;
 }
 
 export default function Studio() {
   const [session, setSession] = useState<Session>();
+  const [blueprint, setBlueprint] = useState<Blueprint>();
   const [mode, setMode] = useState<string>();
   const [catalog, setCatalog] = useState<Catalog>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const [text, setText] = useState("");
 
-  const apply = useCallback((r: ApiResult) => {
+  const apply = useCallback((r: SessionResponse) => {
     if (r.session) {
       setSession(r.session);
+      setBlueprint(r.blueprint);
       const url = new URL(window.location.href);
       url.searchParams.set("s", r.session.id);
       window.history.replaceState(null, "", url);
@@ -58,7 +55,18 @@ export default function Studio() {
     if (id) call(`/api/sessions/${id}`).then(apply);
   }, [apply]);
 
-  const run = async (p: Promise<ApiResult>) => {
+  // While the reviewer has the blueprint, check for their decision. Stops on any step change.
+  const sid = session?.id;
+  const waiting = session?.step === "review" && session.review?.status === "pending";
+  useEffect(() => {
+    if (!sid || !waiting) return;
+    const timer = setInterval(() => {
+      call(`/api/sessions/${sid}`).then((r) => { if (r.session) apply(r); }).catch(() => {});
+    }, POLL_MS);
+    return () => clearInterval(timer);
+  }, [sid, waiting, apply]);
+
+  const run = async (p: Promise<SessionResponse>) => {
     setBusy(true);
     try {
       apply(await p);
@@ -70,7 +78,7 @@ export default function Studio() {
   };
 
   const start = (idea: string) => run(call("/api/sessions", { idea })).then(() => setText(""));
-  const send = (body: unknown) => session && run(call(`/api/sessions/${session.id}`, body));
+  const send = (a: ClientAction) => session && run(call(`/api/sessions/${session.id}`, a));
   const answer = (value: string) => {
     if (!value.trim()) return;
     setText("");
@@ -79,6 +87,7 @@ export default function Studio() {
   const startOver = () => {
     window.history.replaceState(null, "", window.location.pathname);
     setSession(undefined);
+    setBlueprint(undefined);
     setError(undefined);
   };
 
@@ -103,18 +112,24 @@ export default function Studio() {
         <section className="flex min-h-[60vh] flex-col rounded-xl border border-zinc-200 bg-white">
           {!session ? (
             <IdeaForm text={text} setText={setText} busy={busy} onStart={start} />
+          ) : BLUEPRINT_STEPS.includes(session.step) ? (
+            <BlueprintStep session={session} blueprint={blueprint} busy={busy} error={error} send={send} onNewIdea={startOver} />
           ) : (
             <>
               <Transcript log={session.log} />
               <div className="border-t border-zinc-200 p-4">
-                {error && (
+                {error && (session.step === "interview" ? (
                   <div role="alert" className="mb-3 flex items-center justify-between gap-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
                     <span>The interviewer didn&apos;t answer: {error}</span>
                     <button onClick={() => send({ type: "retry" })} disabled={busy} className="shrink-0 font-medium underline">Retry</button>
                   </div>
-                )}
+                ) : (
+                  <p role="alert" className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>
+                ))}
                 {session.step === "scope" && catalog ? (
                   <ScopePicker session={session} catalog={catalog} busy={busy} onChoose={(scope, role, knobs) => send({ type: "choose_scope", scope, role, knobs })} />
+                ) : session.step === "tests" ? (
+                  <TestsStep busy={busy} send={send} />
                 ) : (
                   <Composer session={session} busy={busy} text={text} setText={setText} onAnswer={answer} onResolve={(choice) => send({ type: "resolve", choice })} />
                 )}
@@ -131,7 +146,107 @@ export default function Studio() {
   );
 }
 
-function ModeBadge({ mode }: { mode: string }) {
+function TestsStep({ busy, send }: { busy: boolean; send: (a: ClientAction) => unknown }) {
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-sm text-zinc-700">The test run needs live models and isn&apos;t built yet.</p>
+      <div className="flex flex-wrap gap-2">
+        <button disabled={busy} onClick={() => send({ type: "continue" })} className={PRIMARY}>Continue to blueprint</button>
+        <button disabled={busy} onClick={() => send({ type: "reopen_scope" })} className={SECONDARY}>Change scope</button>
+      </div>
+    </div>
+  );
+}
+
+/** Main panel for the blueprint, review and done steps. */
+function BlueprintStep({ session, blueprint, busy, error, send, onNewIdea }: {
+  session: Session; blueprint?: Blueprint; busy: boolean; error?: string;
+  send: (a: ClientAction) => unknown; onNewIdea: () => void;
+}) {
+  const r = session.review;
+  const last = session.log.at(-1);
+  return (
+    <div className="flex flex-1 flex-col">
+      <div className="flex flex-col gap-3 border-b border-zinc-200 p-4">
+        {error && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
+        {session.step === "blueprint" && (
+          <>
+            {r?.status === "changes" && (
+              <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+                <span className="font-medium">Reviewer asked for changes on v{r.version}:</span> {r.note}
+              </p>
+            )}
+            {last?.kind === "blocked" && (
+              <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{last.what}</p>
+            )}
+            <div className="flex flex-wrap items-center gap-2">
+              <button disabled={busy || !blueprint} onClick={() => send({ type: "submit" })} className={PRIMARY}>
+                {r ? `Resubmit as v${r.version + 1}` : "Submit for review"}
+              </button>
+              <button disabled={busy} onClick={() => send({ type: "reopen_scope" })} className={SECONDARY}>Change scope</button>
+              <span className="text-xs text-zinc-500">You can still edit the spec on the right before you submit.</span>
+            </div>
+          </>
+        )}
+        {session.step === "review" && r && <ReviewCard review={r} />}
+        {session.step === "done" && r && <DoneBanner review={r} onNewIdea={onNewIdea} />}
+      </div>
+      {blueprint ? (
+        <>
+          <BlueprintView blueprint={blueprint} audience="requester" />
+          <ExportBar blueprint={blueprint} />
+        </>
+      ) : (
+        <p className="p-4 text-sm text-zinc-500">Loading the blueprint…</p>
+      )}
+    </div>
+  );
+}
+
+function ReviewCard({ review: r }: { review: SessionReview }) {
+  const [copied, setCopied] = useState("");
+  const link = `${window.location.origin}${reviewPath(r.reviewId)}`;
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopied("Link copied.");
+    } catch {
+      setCopied("Couldn't copy. Select the link and copy it.");
+    }
+  };
+  return (
+    <div className="rounded-lg border border-sky-200 bg-sky-50 p-3">
+      <p className="font-medium text-sky-950">v{r.version} submitted · waiting for review</p>
+      <p className="mt-0.5 text-sm text-sky-900">
+        {r.openedAt ? "The reviewer has opened it." : "Send this link to your reviewer."} This page updates when they decide.
+      </p>
+      <div className="mt-2 flex gap-2">
+        <label htmlFor="review-link" className="sr-only">Reviewer link</label>
+        <input id="review-link" readOnly value={link} onFocus={(e) => e.currentTarget.select()}
+          className="min-w-0 flex-1 rounded-lg border border-sky-200 bg-white px-2 py-1.5 text-sm text-zinc-800" />
+        <button type="button" onClick={copy} className="shrink-0 rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-800 hover:border-indigo-400">
+          Copy link
+        </button>
+      </div>
+      <span role="status" className="mt-1 block text-xs text-sky-900">{copied}</span>
+    </div>
+  );
+}
+
+function DoneBanner({ review: r, onNewIdea }: { review: SessionReview; onNewIdea: () => void }) {
+  const approved = r.status === "approved";
+  return (
+    <div className={`flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3 ${approved ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-red-200 bg-red-50 text-red-950"}`}>
+      <p className="text-sm">
+        <span className="font-medium">{approved ? `Approved: v${r.version}.` : `Rejected v${r.version}:`}</span>
+        {approved ? " The reviewer signed off on this blueprint." : ` ${r.note ?? ""}`}
+      </p>
+      <button onClick={onNewIdea} className={SECONDARY}>New idea</button>
+    </div>
+  );
+}
+
+export function ModeBadge({ mode }: { mode: string }) {
   if (mode === "offline") {
     return <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-900">Offline script · no model calls</span>;
   }
@@ -208,13 +323,10 @@ function Transcript({ log }: { log: Decision[] }) {
 
 function Composer({ session, busy, text, setText, onAnswer, onResolve }: {
   session: Session; busy: boolean; text: string; setText: (s: string) => void;
-  onAnswer: (s: string) => void; onResolve: (c: "selfreport" | "route" | "keep") => void;
+  onAnswer: (s: string) => void; onResolve: (c: ResolveChoice) => void;
 }) {
   if (session.pushback?.blocking) return <PushbackCard session={session} busy={busy} onResolve={onResolve} />;
   if (session.step === "scope") return <p className="text-sm text-zinc-500">Loading scope options…</p>;
-  if (session.step === "tests") {
-    return <p className="text-sm text-zinc-600">Scope chosen. Next: the tool drafts the agent and runs its tests on both models. That step needs live models (Phase 2, in progress).</p>;
-  }
   if (busy || !session.question) return <p className="text-sm text-zinc-500">{busy ? "Thinking…" : "Waiting for the interviewer."}</p>;
 
   const q = session.question;
@@ -241,7 +353,7 @@ function Composer({ session, busy, text, setText, onAnswer, onResolve }: {
   );
 }
 
-function PushbackCard({ session, busy, onResolve }: { session: Session; busy: boolean; onResolve: (c: "selfreport" | "route" | "keep") => void }) {
+function PushbackCard({ session, busy, onResolve }: { session: Session; busy: boolean; onResolve: (c: ResolveChoice) => void }) {
   const pb = session.pushback!;
   const names = pb.flagged.join(", ");
   return (
@@ -251,52 +363,34 @@ function PushbackCard({ session, busy, onResolve }: { session: Session; busy: bo
         That counts as Penn State Level 3–4 data (FERPA). AI Studio agents may only use Level 1–2 data. How should the agent work instead?
       </p>
       <div className="mt-3 grid gap-2 sm:grid-cols-2">
-        <button disabled={busy} onClick={() => onResolve("selfreport")} className="rounded-lg border border-zinc-300 bg-white p-3 text-left hover:border-indigo-400 disabled:opacity-50">
-          <span className="block font-medium text-zinc-900">(a) Students tell it their GPA and credits</span>
-          <span className="block text-sm text-zinc-600">Nothing is read or stored. Answers say they depend on what the student reported.</span>
-        </button>
-        <button disabled={busy} onClick={() => onResolve("route")} className="rounded-lg border border-zinc-300 bg-white p-3 text-left hover:border-indigo-400 disabled:opacity-50">
-          <span className="block font-medium text-zinc-900">(b) No records at all</span>
-          <span className="block text-sm text-zinc-600">Questions about a specific record go to an advising appointment.</span>
-        </button>
+        {pb.options.map((choice) => {
+          const opt = SCENARIO.pushback.options[choice];
+          return (
+            <button key={choice} disabled={busy} onClick={() => onResolve(choice)} className="rounded-lg border border-zinc-300 bg-white p-3 text-left hover:border-indigo-400 disabled:opacity-50">
+              <span className="block font-medium text-zinc-900">{opt.title}</span>
+              <span className="block text-sm text-zinc-600">{opt.detail}</span>
+            </button>
+          );
+        })}
       </div>
       <button disabled={busy} onClick={() => onResolve("keep")} className="mt-3 text-sm text-red-900 underline disabled:opacity-50">
         Keep it anyway
       </button>
-      {pb.attempts > 0 && (
-        <p className="mt-2 text-sm text-red-900">
-          That would need a data steward and a Platform Agent review, so this self-serve flow can&apos;t continue with it. Pick (a) or (b).
-        </p>
-      )}
     </div>
-  );
-}
-
-const LEVEL_STYLE = ["", "bg-emerald-100 text-emerald-900", "bg-sky-100 text-sky-900", "bg-red-100 text-red-900", "bg-red-200 text-red-950"];
-
-function SourceRow({ src }: { src: Source }) {
-  return (
-    <li className="flex items-start justify-between gap-2 text-sm">
-      <span className="text-zinc-800">{src.url ? <a href={src.url} target="_blank" rel="noreferrer" className="underline decoration-zinc-300">{src.name}</a> : src.name}</span>
-      <span className="flex shrink-0 gap-1">
-        <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${LEVEL_STYLE[src.level]}`}>L{src.level}</span>
-        <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-zinc-600" title={src.reason}>{src.decidedBy}</span>
-      </span>
-    </li>
   );
 }
 
 function SpecPanel({ session, busy, onEdit }: { session?: Session; busy: boolean; onEdit: (k: SlotKey, v: string) => void }) {
   const [editing, setEditing] = useState<SlotKey>();
   const [draft, setDraft] = useState("");
-  const canEdit = session?.step === "interview" && !session.pushback?.blocking && !busy;
+  const canEdit = (session?.step === "interview" || session?.step === "blueprint") && !session.pushback?.blocking && !busy;
 
   return (
     <>
       <div className="rounded-xl border border-zinc-200 bg-white p-4">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">Spec so far</h2>
         <dl className="space-y-3">
-          {SLOT_ORDER.map((key) => {
+          {SLOT_KEYS.map((key) => {
             const slot = session?.slots.find((s) => s.key === key);
             return (
               <div key={key}>
@@ -333,13 +427,13 @@ function SpecPanel({ session, busy, onEdit }: { session?: Session; busy: boolean
       <div className="rounded-xl border border-zinc-200 bg-white p-4">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">Data sources</h2>
         {session?.sources.length ? (
-          <ul className="space-y-2">{session.sources.map((s) => <SourceRow key={s.name} src={s} />)}</ul>
+          <ul className="space-y-2">{session.sources.map((s) => <SourceItem key={s.name} src={s} />)}</ul>
         ) : (
           <p className="text-sm text-zinc-400">None yet.</p>
         )}
         {session?.pushback?.choice && (
           <p className="mt-3 rounded-lg bg-zinc-50 p-2 text-xs text-zinc-700">
-            <span className="font-medium">Rule added by your choice:</span> {PUSHBACK_RULES[session.pushback.choice]}
+            <span className="font-medium">Rule added by your choice:</span> {SCENARIO.pushback.options[session.pushback.choice].rule}
           </p>
         )}
         <p className="mt-3 text-xs text-zinc-400">Levels: Penn State data classes. “rule” = decided by a fixed table; “model” = classified by AI because no rule matched.</p>

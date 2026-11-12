@@ -18,9 +18,17 @@ export const TESTS_NOT_RUN: TestsSummary = { status: "not-run", note: "Not run y
 
 const TITLE_MAX = 80;
 
+/**
+ * The idea's first line, at most TITLE_MAX characters. A longer line is cut at the last
+ * space that leaves room for the ellipsis, unless that would keep less than half (one long
+ * token is cut hard). No space, comma, semicolon, colon or hyphen before the ellipsis.
+ */
 function titleOf(idea: string): string {
   const first = idea.split("\n")[0].trim();
-  return first.length <= TITLE_MAX ? first : `${first.slice(0, TITLE_MAX - 1).trimEnd()}…`;
+  if (first.length <= TITLE_MAX) return first;
+  const space = first.lastIndexOf(" ", TITLE_MAX - 1);
+  const cut = space >= TITLE_MAX / 2 ? first.slice(0, space) : first.slice(0, TITLE_MAX - 1);
+  return `${cut.replace(/[\s,;:-]+$/, "")}…`;
 }
 
 const slotValue = (s: Session, key: SlotKey) => s.slots.find((x) => x.key === key)?.value.trim() ?? "";

@@ -250,7 +250,7 @@ export function reduce(s: Session, a: Action): Session {
       // requester's slots, so a later answer can't overwrite it.
       const sources = s.sources.filter((src) => src.level < 3);
       const self = SCENARIO.pushback.selfReportSource;
-      if (a.choice === "selfreport" && !sources.some((src) => src.name === self.name)) sources.push(self); // once, even after a second flag
+      if (a.choice === "selfreport" && !sources.some((src) => sameSource(src.name, self.name))) sources.push(self); // once, even after a second flag
       const what = SCENARIO.pushback.options[a.choice].logLine;
       const next: Session = {
         ...s, sources, question: undefined,

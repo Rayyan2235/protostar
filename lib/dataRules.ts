@@ -53,37 +53,52 @@ export function classifySource(
   return { name: src.name, url: src.url, level: 2, decidedBy: "rule", reason: "Unrecognised source; treated as Level 2 until reviewed.", ruleId: "default" };
 }
 
-const NEGATION = /\b(never|not|no|don'?t|do not|doesn'?t|without|avoid|refuse|stop)\b[^.;!?]{0,40}$/i;
-/**
- * Clause boundaries in every slot: sentence ends, ; and :, line breaks and tabs, brackets,
- * en and em dashes, a spaced hyphen or slash, and "but". An unspaced hyphen or slash
- * ("self-report", "and/or") stays inside the clause.
- */
-const BOUNDARIES = String.raw`[.!?](?=\s|$)|[;:()\t\r\n–—]|\s-\s|\s\/\s|\bbut\b`;
-const CLAUSE_END = new RegExp(BOUNDARIES, "gi");
-/** Every slot but never also splits at commas: "No problem, students paste their audit". */
-const CLAUSE_END_COMMA = new RegExp(`${BOUNDARIES}|,`, "gi");
+const NEGATION_WORD = /\b(?:never|not|no|don'?t|do not|doesn'?t|without|avoid|refuse|stop)\b/gi;
+/** Max characters between a negation word and the term it hides (parked, contract §6). */
+const GAP_MAX = 40;
+/** An ASCII hyphen or slash with a letter or digit on both sides is part of a word ("self-report", "and/or"). */
+const INNER_JOIN = /(?<=[\p{L}\p{Nd}])[-/](?=[\p{L}\p{Nd}])/gu;
+/** The only characters a negation may reach across: letters, digits, plain spaces, apostrophes. */
+const GAP_CHARS = /^[\p{L}\p{Nd} '’]*$/u;
+/** The never slot also allows commas: "Never ask for transcripts, degree audits or student IDs". */
+const GAP_CHARS_NEVER = /^[\p{L}\p{Nd} '’,]*$/u;
+/** Words that start a new thought, in every slot. */
+const TURN_WORDS = /\b(?:but|so|then|however|though|instead|yet|except)\b/i;
+/** Words that join a new item; they keep the negation only in the never slot. "and/or" counts. */
+const LIST_WORDS = /\b(?:and|or|nor)\b/i;
 
-/** The requester's text from the start of the clause up to `index`. */
-function clauseBefore(text: string, index: number, slot?: SlotKey): string {
+/** Whether a negation reaches across `gap` (the text between the negation word and the term). */
+function negationReaches(gap: string, slot?: SlotKey): boolean {
+  const never = slot === "never";
+  return gap.length <= GAP_MAX
+    && (never ? GAP_CHARS_NEVER : GAP_CHARS).test(gap.replace(INNER_JOIN, ""))
+    && !TURN_WORDS.test(gap)
+    && (never || !LIST_WORDS.test(gap));
+}
+
+/** True if some negation word before `index` reaches the term there. */
+function negated(text: string, index: number, slot?: SlotKey): boolean {
   const before = text.slice(0, index);
-  let start = 0;
-  for (const m of before.matchAll(slot === "never" ? CLAUSE_END : CLAUSE_END_COMMA)) start = m.index + m[0].length;
-  return before.slice(start);
+  for (const m of before.matchAll(NEGATION_WORD)) {
+    if (negationReaches(before.slice(m.index + m[0].length), slot)) return true;
+  }
+  return false;
 }
 
 /**
  * Safety net over the requester's own words: Level 3–4 rule hits in free text, even if
- * the model failed to extract them. A negation hides a hit only in the same clause
- * ("never read transcripts"); otherwise it fails closed. In the never slot, commas don't
- * split the clause, so "Never ask for transcripts, degree audits or student IDs" passes.
+ * the model failed to extract them. An allow list, so it fails closed: a negation hides a
+ * hit ("never read transcripts") only across letters, digits, spaces and apostrophes, with
+ * no turn word (but, so, then, ...) and, outside the never slot, no and/or/nor or comma.
+ * Any other character in between (punctuation, line break, dash, bracket, symbol) and the
+ * term counts.
  */
 export function scanText(text: string, slot?: SlotKey): Source[] {
   const hits: Source[] = [];
   for (const rule of RULES.filter((r) => r.level >= 3)) {
     const re = new RegExp(rule.pattern.source, "gi");
     for (const m of text.matchAll(re)) {
-      if (NEGATION.test(clauseBefore(text, m.index, slot))) continue;
+      if (negated(text, m.index, slot)) continue;
       hits.push({ name: rule.label, level: rule.level, decidedBy: "rule", reason: rule.reason, ruleId: rule.id });
       break;
     }

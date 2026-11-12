@@ -1,11 +1,10 @@
-/** Kiln ports (ADR 0012, plan-kiln K2): Button, Tag, SpecSheet, LivingSky. Server render only. */
+/** Kiln ports (ADR 0012, plan-kiln K2): Button, Tag, SpecSheet. Server render only. */
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Button } from "./Button";
 import { Tag } from "./Tag";
 import { SpecSheet } from "./SpecSheet";
-import { LivingSky, skyFor, skyForHour } from "./LivingSky";
 
 const count = (html: string, needle: string) => html.split(needle).length - 1;
 
@@ -67,26 +66,3 @@ test("SpecSheet takes 4 to 8 rows only", () => {
   assert.throws(() => renderToStaticMarkup(<SpecSheet number="1" title="t" revision="r" rows={rows(9)} />), /4 to 8/);
 });
 
-test("LivingSky picks the mode from the hour", () => {
-  assert.deepEqual([4, 5, 8, 17, 20].map(skyForHour), ["night", "dawn", "day", "dusk", "night"]);
-});
-
-test("LivingSky: a pinned mode ignores the clock; auto follows it", () => {
-  assert.deepEqual([4, 13, 18].map((h) => skyFor("night", h)), ["night", "night", "night"]);
-  assert.deepEqual([4, 13, 18].map((h) => skyFor("auto", h)), ["night", "day", "dusk"]);
-});
-
-test("LivingSky server render is the fixed default: night and still", () => {
-  assert.equal(typeof window, "undefined");
-  const html = renderToStaticMarkup(<LivingSky label="Night sky">art</LivingSky>);
-  assert.match(html, /data-sky="night"/);
-  assert.doesNotMatch(html, /<div[^>]*\sdata-live/);
-  assert.match(html, /role="img"/);
-  assert.match(html, /aria-label="Night sky"/);
-});
-
-test("LivingSky renders still when motion is off", () => {
-  const html = renderToStaticMarkup(<LivingSky label="Sky" mode="day" motion={false}>art</LivingSky>);
-  assert.match(html, /data-sky="day"/);
-  assert.doesNotMatch(html, /<div[^>]*\sdata-live/);
-});

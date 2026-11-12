@@ -49,15 +49,22 @@ test("Studio while the link is still being read renders the busy state too", () 
   assert.doesNotMatch(html, /id="idea"/);
 });
 
-test("start screen: the scene, a heading-2, the idea field and one pill", () => {
+test("start screen (K4): a type-led statement on paper, no art, no motion switch", () => {
   const html = renderToStaticMarkup(<Studio />);
-  assert.match(html, /role="img"/);
-  assert.match(html, /<h1[^>]*class="heading-2/);
+  assert.doesNotMatch(html, /role="img"/, "no scene");
+  assert.doesNotMatch(html, /<svg/, "no drawn art");
+  assert.doesNotMatch(html, /aria-pressed/, "nothing moves, so no Motion switch");
+  assert.match(html, /<h1[^>]*class="display[^"]*"[^>]*>What do you keep answering <span[^>]*text-ink-muted[^>]*>over and over\?<\/span><\/h1>/);
   assert.match(html, /<label[^>]*for="idea"/);
   assert.equal(count(html, 'data-chip="arrow"'), 0, "the pill is disabled (no arrow) until there is text");
   assert.match(html, /Start the interview/);
   assert.match(html, /Use Dana&#x27;s example/);
-  assert.match(html, /aria-pressed/, "the Motion switch sits in the TopBar");
+});
+
+test("start screen margin: a mono, figure-numbered flow strip and one honest aside", () => {
+  const t = text(renderToStaticMarkup(<Studio />));
+  assert.match(t, /01 Interview 02 Scope 03 Tests 04 Blueprint 05 Review/);
+  assert.match(t, /Prototype\. Public, Level 1–2 data only\. Never student records\./);
 });
 
 // a11y fix 3: after resolve, answer, save or cancel, focus goes to the next logical control.

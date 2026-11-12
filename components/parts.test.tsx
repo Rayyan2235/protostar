@@ -7,8 +7,6 @@ import { TextField } from "./TextField";
 import { ChatRow } from "./ChatRow";
 import { Notice } from "./Notice";
 import { ChoiceList } from "./ChoiceList";
-import { MotionSwitch } from "./MotionSwitch";
-import { START_SKY, StartScene } from "./StartScene";
 
 const count = (html: string, needle: string) => html.split(needle).length - 1;
 
@@ -77,19 +75,3 @@ test("ChoiceList is a radiogroup of radios with aria-checked and one tab stop", 
   assert.equal(count(html, 'tabindex="0"'), 1);
 });
 
-test("MotionSwitch is a toggle button, on by default on the server", () => {
-  const html = renderToStaticMarkup(<MotionSwitch />);
-  assert.match(html, /<button[^>]*aria-pressed="true"/);
-  assert.match(html, /Motion/);
-});
-
-test("StartScene is pinned to night (Lead, 2026-11-12): the world is a night sky", () => {
-  assert.equal(START_SKY, "night");
-});
-
-test("StartScene server render is the fixed default: night and still", () => {
-  const html = renderToStaticMarkup(<StartScene />);
-  assert.match(html, /data-sky="night"/);
-  assert.doesNotMatch(html, /<div[^>]*\sdata-live/);
-  assert.match(html, /role="img"/);
-});

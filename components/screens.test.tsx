@@ -60,6 +60,12 @@ test("BlueprintView leads with a SpecSheet of 7 facts: version, title, date", ()
   assert.match(text(html), /Waiting for a decision/);
 });
 
+test("blueprint sections separate with space, not rule lines (Kiln §5)", () => {
+  const html = renderToStaticMarkup(<BlueprintView blueprint={bp()} audience="reviewer" />);
+  assert.doesNotMatch(html, /<section[^>]*border-t/);
+  assert.doesNotMatch(html, /<details[^>]*border-t/);
+});
+
 test("the cost sits next to its estimate note", () => {
   const html = renderToStaticMarkup(<BlueprintView blueprint={bp()} audience="reviewer" />);
   const row = html.match(/Est\. cost \/ month<\/dt>[\s\S]*?<\/dd>/)?.[0] ?? "";

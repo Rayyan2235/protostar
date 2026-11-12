@@ -3,16 +3,22 @@
 @import "./tokens.css";
 
 /*
- * Tailwind maps Kiln tokens to utilities: bg-paper, text-ink, border-hairline, font-display,
- * shadow-sheet, ease-out... Colours, fonts, shadows and easings only for now (ADR 0012).
- * Spacing and radius are NOT mapped yet: Kiln's names collide with Tailwind's defaults and would
- * resize unmigrated screens. Migrated code uses p-(--space-3), rounded-(--radius-md),
- * duration-(--dur-quick) until the defaults are reset at the end of the migration.
+ * Tailwind speaks only Kiln (ADR 0012, plan-kiln K3). Each default namespace is reset, then Kiln's
+ * tokens are mapped back: bg-paper, text-ink, p-3 (= space-3), rounded-md (= radius-md),
+ * shadow-sheet, ease-out... A Tailwind default colour, or p-7, now generates nothing.
+ * Arbitrary values still read tokens: p-(--space-3), duration-(--dur-quick).
  *
- * Where a Kiln name equals a Tailwind theme name (--font-*, --shadow-*, --ease-*), Tailwind also
- * writes "--x: var(--x)" into its theme layer. tokens.css is unlayered, so its value wins.
+ * Where a Kiln name equals a Tailwind theme name (--font-*, --shadow-*, --ease-*, --radius-*),
+ * Tailwind also writes "--x: var(--x)" into its theme layer. tokens.css is unlayered, so its value wins.
  */
 @theme inline {
+  --color-*: initial;
+  --spacing-*: initial;
+  --radius-*: initial;
+  --shadow-*: initial;
+  --font-*: initial;
+  --ease-*: initial;
+
   --color-paper: var(--paper);
   --color-paper-raised: var(--paper-raised);
   --color-paper-sunk: var(--paper-sunk);
@@ -31,6 +37,23 @@
   --color-button-ink: var(--button-ink);
   --color-on-art: var(--on-art);
   --color-scrim: var(--scrim);
+
+  /* 0 keeps min-w-0, inset-0 and basis-0 working after the reset. */
+  --spacing-0: 0;
+  --spacing-1: var(--space-1);
+  --spacing-2: var(--space-2);
+  --spacing-3: var(--space-3);
+  --spacing-4: var(--space-4);
+  --spacing-5: var(--space-5);
+  --spacing-6: var(--space-6);
+  --spacing-7: var(--space-7);
+  --spacing-8: var(--space-8);
+
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-frame: var(--radius-frame);
+  --radius-pill: var(--radius-pill);
 
   --font-display: var(--font-display);
   --font-body: var(--font-body);

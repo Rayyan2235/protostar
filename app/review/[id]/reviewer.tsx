@@ -51,6 +51,8 @@ export default function Reviewer({ reviewId }: { reviewId: string }) {
   const [busy, setBusy] = useState(false);
   /** The version this tab has already reported as opened. */
   const opened = useRef(0);
+  /** After a decision the form goes away; move focus to the new status instead of <body>. */
+  const focusStatus = useRef(false);
 
   const take = useCallback(({ status, data }: Reply) => {
     if (data.mode) setMode(data.mode);
@@ -95,6 +97,7 @@ export default function Reviewer({ reviewId }: { reviewId: string }) {
       const r = await request(reviewId, { type: "decide", version: view.blueprint.version, status, ...(note ? { note } : {}) });
       take(r);
       if (r.status === 409) await openIfNew(r.data.review); // stale tab: a newer version is showing now
+      if (r.status === 200) focusStatus.current = true;
       return r.status === 200;
     } catch {
       setError("Network error. Try again.");
@@ -103,6 +106,12 @@ export default function Reviewer({ reviewId }: { reviewId: string }) {
       setBusy(false);
     }
   };
+
+  useEffect(() => {
+    if (!focusStatus.current) return;
+    focusStatus.current = false;
+    document.getElementById("review-status")?.focus();
+  }, [view]);
 
   if (missing) {
     return (
@@ -134,10 +143,12 @@ export default function Reviewer({ reviewId }: { reviewId: string }) {
         </div>
         {/* Sticky on wide screens so the decision stays in reach while the blueprint scrolls. */}
         <aside className="flex min-w-0 flex-col gap-(--space-4) lg:sticky lg:top-(--space-3) lg:col-span-4 lg:self-start" aria-label="Your review">
-          <StatusNotice view={view} />
+          <div id="review-status" tabIndex={-1} className="rounded-(--radius-sm) focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-accent">
+            <StatusNotice view={view} />
+          </div>
           {error && <Notice tone="danger">{error}</Notice>}
-          {/* Keyed by version so a resubmitted version starts with an empty note. */}
-          <DecisionForm key={view.blueprint.version} enabled={view.status === "pending"} busy={busy} onDecide={decide} />
+          {/* Only while a decision is open; a decided version shows its status alone. Keyed by version so v2 starts empty. */}
+          {view.status === "pending" && <DecisionForm key={view.blueprint.version} enabled busy={busy} onDecide={decide} />}
         </aside>
         <div className="min-w-0 lg:col-span-8">
           <Rounds view={view} />

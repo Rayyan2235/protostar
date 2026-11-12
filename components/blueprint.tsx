@@ -7,6 +7,7 @@ import { formatDollars } from "@/lib/scoper";
 import { Button } from "@/components/kiln/Button";
 import { SpecSheet } from "@/components/kiln/SpecSheet";
 import { Tag } from "@/components/kiln/Tag";
+import { DecisionLog } from "@/components/DecisionLog";
 import { Notice } from "@/components/Notice";
 
 type Audience = "requester" | "reviewer";
@@ -124,7 +125,7 @@ export function BlueprintView({ blueprint: bp, audience, status }: {
         )}
         {data.pushback && (
           <div className="mt-(--space-3)">
-            <Notice tone="accent" title="Flagged and removed">
+            <Notice tone="accent" title="Flagged and removed" live={false}>
               <p>
                 {data.pushback.flagged.map((f, i) => (
                   <span key={f.name}>
@@ -175,19 +176,7 @@ export function BlueprintView({ blueprint: bp, audience, status }: {
         <p className="body text-ink-soft">{bp.tests.note}</p>
       </Section>
 
-      <details className="group border-t border-hairline pt-(--space-3)">
-        <summary className="label cursor-pointer uppercase text-ink-muted focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-accent">
-          Decision log ({bp.log.length})
-        </summary>
-        <ol className="mt-(--space-2)">
-          {bp.log.map((d, i) => (
-            <li key={i} className="flex gap-(--space-2) border-b border-hairline py-(--space-1) last:border-b-0">
-              <span className={`label w-(--space-7) shrink-0 ${d.who === "requester" ? "text-accent" : d.who === "reviewer" ? "text-ink" : "text-ink-muted"}`}>{d.who}</span>
-              <span className="small font-normal text-ink-soft">{d.what}</span>
-            </li>
-          ))}
-        </ol>
-      </details>
+      <DecisionLog log={bp.log} />
     </article>
   );
 }

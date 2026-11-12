@@ -10,7 +10,7 @@
  * is used only for sources no rule matches, and the result says which one decided. The
  * pushback therefore never depends on a model run.
  */
-import type { Level, Pushback, Source } from "./types";
+import type { Level, Pushback, SlotKey, Source } from "./types";
 
 export interface Rule {
   id: string;
@@ -53,18 +53,52 @@ export function classifySource(
   return { name: src.name, url: src.url, level: 2, decidedBy: "rule", reason: "Unrecognised source; treated as Level 2 until reviewed.", ruleId: "default" };
 }
 
-const NEGATION = /\b(never|not|no|don'?t|do not|doesn'?t|without|avoid|refuse|stop)\b[^.;!?]{0,40}$/i;
+const NEGATION_WORD = /\b(?:never|not|no|don'?t|do not|doesn'?t|without|avoid|refuse|stop)\b/gi;
+/** Max characters between a negation word and the term it hides (parked, contract §6). */
+const GAP_MAX = 40;
+/** An ASCII hyphen or slash with a letter or digit on both sides is part of a word ("self-report", "and/or"). */
+const INNER_JOIN = /(?<=[\p{L}\p{Nd}])[-/](?=[\p{L}\p{Nd}])/gu;
+/** The only characters a negation may reach across: letters, digits, plain spaces, apostrophes. */
+const GAP_CHARS = /^[\p{L}\p{Nd} '’]*$/u;
+/** The never slot also allows commas: "Never ask for transcripts, degree audits or student IDs". */
+const GAP_CHARS_NEVER = /^[\p{L}\p{Nd} '’,]*$/u;
+/** Words that start a new thought, in every slot. */
+const TURN_WORDS = /\b(?:but|so|then|however|though|instead|yet|except)\b/i;
+/** Words that join a new item; they keep the negation only in the never slot. "and/or" counts. */
+const LIST_WORDS = /\b(?:and|or|nor)\b/i;
+
+/** Whether a negation reaches across `gap` (the text between the negation word and the term). */
+function negationReaches(gap: string, slot?: SlotKey): boolean {
+  const never = slot === "never";
+  return gap.length <= GAP_MAX
+    && (never ? GAP_CHARS_NEVER : GAP_CHARS).test(gap.replace(INNER_JOIN, ""))
+    && !TURN_WORDS.test(gap)
+    && (never || !LIST_WORDS.test(gap));
+}
+
+/** True if some negation word before `index` reaches the term there. */
+function negated(text: string, index: number, slot?: SlotKey): boolean {
+  const before = text.slice(0, index);
+  for (const m of before.matchAll(NEGATION_WORD)) {
+    if (negationReaches(before.slice(m.index + m[0].length), slot)) return true;
+  }
+  return false;
+}
 
 /**
  * Safety net over the requester's own words: Level 3–4 rule hits in free text, even if
- * the model failed to extract them. Skips negated mentions ("never read transcripts").
+ * the model failed to extract them. An allow list, so it fails closed: a negation hides a
+ * hit ("never read transcripts") only across letters, digits, spaces and apostrophes, with
+ * no turn word (but, so, then, ...) and, outside the never slot, no and/or/nor or comma.
+ * Any other character in between (punctuation, line break, dash, bracket, symbol) and the
+ * term counts.
  */
-export function scanText(text: string): Source[] {
+export function scanText(text: string, slot?: SlotKey): Source[] {
   const hits: Source[] = [];
   for (const rule of RULES.filter((r) => r.level >= 3)) {
     const re = new RegExp(rule.pattern.source, "gi");
     for (const m of text.matchAll(re)) {
-      if (NEGATION.test(text.slice(0, m.index))) continue;
+      if (negated(text, m.index, slot)) continue;
       hits.push({ name: rule.label, level: rule.level, decidedBy: "rule", reason: rule.reason, ruleId: rule.id });
       break;
     }
@@ -81,11 +115,13 @@ export function gate(
   requesterText: string,
   extracted: { name: string; url?: string; suggestedLevel?: Level; reason?: string }[],
   pushback?: Pushback,
+  /** The slot this text answers, if any (undefined for the idea). */
+  slot?: SlotKey,
 ): Source[] {
   const resolved = new Set(pushback && !pushback.blocking ? pushback.flaggedRules : []);
   const out: Source[] = [];
   const seenRules = new Set<string>();
-  for (const src of [...extracted.map(classifySource), ...scanText(requesterText)]) {
+  for (const src of [...extracted.map(classifySource), ...scanText(requesterText, slot)]) {
     if (src.ruleId && src.ruleId !== "default") {
       if (resolved.has(src.ruleId) || seenRules.has(src.ruleId)) continue;
       if (src.level >= 3) seenRules.add(src.ruleId); // collapse duplicate record hits only
@@ -93,4 +129,16 @@ export function gate(
     out.push(src);
   }
   return out;
+}
+
+/**
+ * Level 3–4 hits for a requester edit (contract §6, edit gate).
+ * - A `sources` edit is scanned with no resolved-rule filter: resolving the pushback
+ *   never lets a record source back in through an edit.
+ * - Any other slot keeps the filter, so a resolved topic (e.g. a hand-off for
+ *   "anything about their degree audit") can be written down.
+ */
+export function editFlags(key: SlotKey, value: string, pushback?: Pushback): Source[] {
+  if (key === "sources") return scanText(value, key);
+  return gate(value, [], pushback, key).filter((s) => s.level >= 3);
 }

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { classifySource, gate, scanText } from "./dataRules";
-import type { Pushback } from "./types";
+import { classifySource, editFlags, gate, scanText } from "./dataRules";
+import type { Pushback, SlotKey } from "./types";
 
 test("degree audits are Level 3 by rule, whatever the model suggests", () => {
   const s = classifySource({ name: "Students paste their degree audit", suggestedLevel: 1, reason: "looks fine" });
@@ -34,7 +34,9 @@ test("free-text scan catches record mentions the model might miss", () => {
 
 test("free-text scan ignores topics and negated mentions", () => {
   assert.deepEqual(scanText("Appeals, medical or special circumstances go to me."), []);
-  assert.deepEqual(scanText("It must never ask for a transcript or their student ID."), []);
+  // BE-4c: "or" ends the negation outside the never slot (pinned fail-closed hit); in never it stays hidden.
+  assert.deepEqual(ruleIds(scanText("It must never ask for a transcript or their student ID.")), ["student-id"]);
+  assert.deepEqual(editFlags("never", "It must never ask for a transcript or their student ID."), []);
   assert.deepEqual(scanText("Don't read degree audits."), []);
 });
 
@@ -52,4 +54,168 @@ test("a resolved rule does not re-flag", () => {
 test("a still-blocking pushback does not suppress anything", () => {
   const pb: Pushback = { blocking: true, flagged: ["Degree audits"], flaggedRules: ["degree-audit"], options: ["selfreport", "route"], attempts: 1 };
   assert.equal(gate("their degree audit", [], pb).length, 1);
+});
+
+// --- Edit gate (contract §6, Planner B B1) ---------------------------------------------
+
+const resolvedAudit: Pushback = {
+  blocking: false, flagged: ["Students paste their degree audit"], flaggedRules: ["degree-audit"],
+  options: ["selfreport", "route"], choice: "selfreport", attempts: 0,
+};
+
+test("editFlags: a sources edit can't re-add a resolved record source", () => {
+  const hits = editFlags("sources", "students paste their degree audit", resolvedAudit);
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].level, 3);
+  assert.equal(hits[0].ruleId, "degree-audit");
+  assert.equal(hits[0].decidedBy, "rule");
+});
+
+test("editFlags: a hand-off topic about a resolved rule passes", () => {
+  assert.deepEqual(editFlags("handoff", "anything about their degree audit", resolvedAudit), []);
+});
+
+test("editFlags: the same hand-off text flags when nothing is resolved", () => {
+  const hits = editFlags("handoff", "anything about their degree audit");
+  assert.deepEqual(hits.map((h) => [h.ruleId, h.level]), [["degree-audit", 3]]);
+});
+
+test("editFlags: negated and Level 1–2 mentions pass", () => {
+  assert.deepEqual(editFlags("sources", "never read transcripts"), []);
+  assert.deepEqual(editFlags("sources", "the bulletin and our SharePoint FAQ"), []);
+});
+
+// --- Negation stays in its clause (BE-4 amendment 3) -------------------------------------
+
+const ruleIds = (hits: { ruleId?: string }[]) => hits.map((h) => h.ruleId);
+
+test("a negation in an earlier clause doesn't hide a record source", () => {
+  assert.deepEqual(ruleIds(scanText("No problem, students paste their degree audit")), ["degree-audit"]);
+  assert.deepEqual(ruleIds(scanText("We do not store it, but advisors read the degree audit")), ["degree-audit"]);
+  assert.deepEqual(ruleIds(scanText("Not sure yet: students upload transcripts")), ["transcript"]);
+  assert.deepEqual(ruleIds(scanText("No grades, transcripts get pasted in")), ["transcript"]);
+  assert.deepEqual(ruleIds(scanText("Not names, degree audits only")), ["degree-audit"]);
+});
+
+test("a negation in the same clause still hides the term", () => {
+  assert.deepEqual(scanText("never read transcripts"), []);
+  // BE-4c: "or" now ends the negation outside the never slot (pinned fail-closed hit).
+  assert.deepEqual(ruleIds(scanText("don't use transcripts or degree audits")), ["degree-audit"]);
+});
+
+test("as a sources answer, a comma starts a new clause: fails closed", () => {
+  const text = "Never ask for transcripts, degree audits or student IDs";
+  assert.deepEqual(ruleIds(scanText(text, "sources")), ["degree-audit", "student-id"]);
+  assert.deepEqual(ruleIds(editFlags("sources", text)), ["degree-audit", "student-id"]);
+});
+
+test("as a never answer, commas don't split the clause", () => {
+  assert.deepEqual(editFlags("never", "Never ask for transcripts, degree audits or student IDs"), []);
+  assert.deepEqual(editFlags("never", "It must never ask for, look up, or read transcripts"), []);
+  assert.deepEqual(editFlags("never", "Never read transcripts, degree audits"), []);
+});
+
+test("as a never answer, ; and : and but still split the clause", () => {
+  const text = "It must never give admission advice; students will paste their degree audit";
+  assert.deepEqual(ruleIds(scanText(text, "never")), ["degree-audit"]);
+  assert.deepEqual(ruleIds(editFlags("never", text)), ["degree-audit"]);
+});
+
+test("gate passes the slot to the text scan", () => {
+  const text = "Never ask for transcripts, degree audits or student IDs";
+  assert.deepEqual(gate(text, [], undefined, "never"), []);
+  assert.deepEqual(ruleIds(gate(text, [], undefined, "sources")), ["degree-audit", "student-id"]);
+});
+
+// --- More clause boundaries, every slot (BE-4b, TESTER-BE GAP 16:37) ------------------------
+
+test("line breaks, tabs, dashes, brackets and a spaced slash end a clause (12 repros)", () => {
+  const cases: [SlotKey, string, string][] = [
+    ["sources", "No API\nstudents paste their degree audit", "degree-audit"],
+    ["sources", "Not sure\n- transcripts", "transcript"],
+    ["sources", "- no grades\n- degree audits", "degree-audit"],
+    ["sources", "No grades\r\ntranscripts", "transcript"],
+    ["handoff", "No problem\nstudents paste their degree audit", "degree-audit"],
+    ["never", "Never promise admission\nStudents paste their degree audit", "degree-audit"],
+    ["sources", "No problem — students paste their degree audit", "degree-audit"],
+    ["sources", "No API – students paste their degree audit", "degree-audit"],
+    ["sources", "No API - students paste their degree audit", "degree-audit"],
+    ["sources", "No API (students paste their degree audit)", "degree-audit"],
+    ["sources", "No API / students paste their degree audit", "degree-audit"],
+    ["sources", "No API\tstudents paste their degree audit", "degree-audit"],
+  ];
+  for (const [key, text, rule] of cases) assert.deepEqual(ruleIds(editFlags(key, text)), [rule], `${key}: ${JSON.stringify(text)}`);
+});
+
+test("pinned fail-closed hits in the never slot (parked false positives)", () => {
+  assert.deepEqual(ruleIds(editFlags("never", "Never ask for:\n- transcripts\n- degree audits")), ["degree-audit", "transcript"]);
+  assert.deepEqual(ruleIds(editFlags("never", "Never ask for transcripts (or degree audits)")), ["degree-audit"]);
+});
+
+test("unspaced hyphens and slashes are not boundaries; real negations still hide the term", () => {
+  assert.deepEqual(editFlags("sources", "never read transcripts"), []);
+  // BE-4c: "or" now ends the negation outside the never slot (pinned fail-closed hit).
+  assert.deepEqual(ruleIds(editFlags("sources", "don't use transcripts or degree audits")), ["degree-audit"]);
+  assert.deepEqual(ruleIds(editFlags("sources", "never read transcripts and/or degree audits")), ["degree-audit"]);
+  assert.deepEqual(editFlags("sources", "students self-report GPA, never transcripts"), []);
+  assert.deepEqual(editFlags("never", "Never ask for transcripts, degree audits or student IDs"), []);
+  assert.deepEqual(editFlags("never", "It must never ask for, look up, or read transcripts"), []);
+});
+
+// --- Negation allow list (BE-4c, contract §6) --------------------------------------------
+
+/** TESTER-BE's separator table (be4b-attack.mts): none of these may carry a negation across. */
+const SEPARATORS = [
+  " -- ", "- ", " -", "… ", " • ", " | ", " [", " {", " → ", " -> ", " > ", " - ",
+  " ‒ ", " ― ", " − ", " ‐ ", " ", " ", "\v", "\f",
+  " and ", " or ", " nor ", " but ", " so ", " then ", " however ", " though ", " instead ", " yet ", " except ",
+  " /", " // ", "; ", "； ", "： ", "。 ",
+];
+/** and/or/nor keep a never answer's negation ("never read transcripts and degree audits"). */
+const NEVER_KEEPS = new Set([" and ", " or ", " nor "]);
+
+test("a negation reaches a term only across letters, digits, spaces and apostrophes (37 separators x 3 slots)", () => {
+  assert.equal(SEPARATORS.length, 37);
+  const wrong: string[] = [];
+  for (const slot of ["sources", "never", "handoff"] as SlotKey[]) {
+    for (const sep of SEPARATORS) {
+      const hit = editFlags(slot, `No API${sep}students paste their degree audit`).length > 0;
+      const want = !(slot === "never" && NEVER_KEEPS.has(sep));
+      if (hit !== want) wrong.push(`${slot} ${JSON.stringify(sep)}: want ${want ? "hit" : "none"}`);
+    }
+  }
+  assert.deepEqual(wrong, []);
+});
+
+test("real negations still hide the term, in sources and in never", () => {
+  const texts = [
+    "never read transcripts",
+    "students self-report GPA, never transcripts",
+    "Never use degree-audit data",
+    "Don't read the student's transcript (official or unofficial)",
+    "No transcripts - ever",
+    "Never read the student’s transcript",
+  ];
+  for (const slot of ["sources", "never"] as SlotKey[]) {
+    for (const t of texts) assert.deepEqual(editFlags(slot, t), [], `${slot}: ${JSON.stringify(t)}`);
+  }
+});
+
+test("and, or, nor and commas keep a negation only in the never slot", () => {
+  for (const t of [
+    "never read transcripts and degree audits",
+    "never read transcripts and/or degree audits",
+    "Never ask for transcripts, degree audits or student IDs",
+  ]) {
+    assert.deepEqual(editFlags("never", t), [], JSON.stringify(t));
+  }
+});
+
+test("pinned fail-closed hits (deliberate)", () => {
+  assert.deepEqual(ruleIds(editFlags("sources", "don't use transcripts or degree audits")), ["degree-audit"]);
+  assert.deepEqual(ruleIds(scanText("don't use transcripts or degree audits")), ["degree-audit"]);
+  for (const slot of ["sources", "never"] as SlotKey[]) {
+    assert.deepEqual(ruleIds(editFlags(slot, "Never: transcripts")), ["transcript"], `${slot}: colon`);
+    assert.deepEqual(ruleIds(editFlags(slot, "never\ttranscripts")), ["transcript"], `${slot}: tab`);
+  }
 });

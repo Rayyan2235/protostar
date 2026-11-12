@@ -12,11 +12,8 @@ const TOKENS_FILE = "app/tokens.css";
 
 /** Unmigrated files. Remove a file the moment it is clean; the test fails if a listed file is clean or gone. */
 export const LEGACY: string[] = [
-  "app/review/[id]/page.tsx",
-  "app/review/[id]/reviewer.tsx",
   "app/scope.tsx",
   "app/studio.tsx",
-  "components/blueprint.tsx",
 ];
 
 const PALETTES = "slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose";

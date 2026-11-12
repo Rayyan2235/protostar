@@ -8,7 +8,7 @@ import { ChatRow } from "./ChatRow";
 import { Notice } from "./Notice";
 import { ChoiceList } from "./ChoiceList";
 import { MotionSwitch } from "./MotionSwitch";
-import { StartScene } from "./StartScene";
+import { START_SKY, StartScene } from "./StartScene";
 
 const count = (html: string, needle: string) => html.split(needle).length - 1;
 
@@ -81,6 +81,10 @@ test("MotionSwitch is a toggle button, on by default on the server", () => {
   const html = renderToStaticMarkup(<MotionSwitch />);
   assert.match(html, /<button[^>]*aria-pressed="true"/);
   assert.match(html, /Motion/);
+});
+
+test("StartScene is pinned to night (Lead, 2026-11-12): the world is a night sky", () => {
+  assert.equal(START_SKY, "night");
 });
 
 test("StartScene server render is the fixed default: night and still", () => {

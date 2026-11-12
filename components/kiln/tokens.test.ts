@@ -11,10 +11,7 @@ const ROOT = process.cwd();
 const TOKENS_FILE = "app/tokens.css";
 
 /** Unmigrated files. Remove a file the moment it is clean; the test fails if a listed file is clean or gone. */
-export const LEGACY: string[] = [
-  "app/scope.tsx",
-  "app/studio.tsx",
-];
+export const LEGACY: string[] = [];
 
 const PALETTES = "slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose";
 const COLOR_UTILS = "bg|text|border|ring|ring-offset|outline|decoration|divide|fill|stroke|from|via|to|accent|caret|placeholder|shadow";
@@ -89,6 +86,16 @@ test("LEGACY only shrinks: every listed file exists and still has raw values", (
     assert.ok(existsSync(join(ROOT, f)), `${f} is gone: remove it from LEGACY`);
     assert.ok(violations(readFileSync(join(ROOT, f), "utf8")).length > 0, `${f} is clean: remove it from LEGACY`);
   }
+});
+
+test("migration done: LEGACY is empty and Tailwind's default scales are reset to Kiln's", () => {
+  assert.deepEqual(LEGACY, []);
+  const css = readFileSync(join(ROOT, "app/globals.css"), "utf8");
+  for (const ns of ["color", "spacing", "radius", "shadow", "font", "ease"]) {
+    assert.ok(css.includes(`--${ns}-*: initial;`), `globals.css must reset --${ns}-*`);
+  }
+  for (let i = 1; i <= 8; i++) assert.ok(css.includes(`--spacing-${i}: var(--space-${i});`), `--spacing-${i} missing`);
+  for (const r of ["sm", "md", "lg", "frame", "pill"]) assert.ok(css.includes(`--radius-${r}: var(--radius-${r});`), `--radius-${r} missing`);
 });
 
 test("app/tokens.css exists and is imported once, by app/globals.css", () => {

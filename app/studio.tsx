@@ -7,8 +7,10 @@ import { reviewPath, type ClientAction, type SessionResponse } from "@/lib/api";
 import { SCENARIO } from "@/lib/scenario";
 import { BlueprintView, ExportBar, SourceItem } from "@/components/blueprint";
 import { Button } from "@/components/kiln/Button";
-import { ChatRow } from "@/components/ChatRow";
 import { DecisionLog } from "@/components/DecisionLog";
+import { EmptyState } from "@/components/EmptyState";
+import { FlowRail } from "@/components/FlowRail";
+import { KeyHint, submitOnEnter } from "@/components/Kbd";
 import { ModeBadge } from "@/components/ModeBadge";
 import { Notice } from "@/components/Notice";
 import { TextField } from "@/components/TextField";
@@ -64,6 +66,8 @@ export default function Studio({ initialId, pending }: { initialId?: string; pen
   const [error, setError] = useState<string>();
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(Boolean(initialId || pending));
+  /** ?s= named a session this server doesn't have. */
+  const [missing, setMissing] = useState(false);
   /** Selector to focus once the current action has rendered. `soft`: only if focus was lost (poll updates). */
   const focusNext = useRef<{ sel: string; soft?: boolean } | null>(null);
 
@@ -83,7 +87,10 @@ export default function Studio({ initialId, pending }: { initialId?: string; pen
   useEffect(() => {
     if (!initialId) return;
     call(`/api/sessions/${initialId}`)
-      .then(apply)
+      .then((r) => {
+        apply(r);
+        if (!r.session) setMissing(true);
+      })
       .catch(() => setError("Network error. Reload the page."))
       .finally(() => setLoading(false));
   }, [initialId, apply]);
@@ -145,6 +152,7 @@ export default function Studio({ initialId, pending }: { initialId?: string; pen
     setBlueprint(undefined);
     setError(undefined);
     setLoading(false);
+    setMissing(false);
     focusNext.current = { sel: "#idea" };
   };
 
@@ -160,17 +168,20 @@ export default function Studio({ initialId, pending }: { initialId?: string; pen
           <div role="status" aria-busy="true" className="small font-normal text-ink-muted">
             {error ?? "Loading your session…"}
           </div>
+        ) : !session && missing ? (
+          <SessionNotFound onNew={startOver} />
         ) : !session ? (
           <StartScreen text={text} setText={setText} busy={busy} error={error} onStart={start} />
         ) : (
+          <div className="flex flex-1 flex-col gap-(--space-5)">
+          <FlowRail variant="top" step={session.step} />
           <div className="grid flex-1 gap-(--space-5) lg:grid-cols-12">
             <section aria-label={BLUEPRINT_STEPS.includes(session.step) ? "Blueprint" : "Interview"} className="flex min-w-0 flex-col gap-(--space-4) lg:col-span-8">
               {BLUEPRINT_STEPS.includes(session.step) ? (
                 <BlueprintStep session={session} blueprint={blueprint} busy={busy} error={error} send={send} onNewIdea={startOver} />
               ) : (
                 <>
-                  <Transcript log={session.log} />
-                  <div className="flex flex-col gap-(--space-3) border-t border-hairline pt-(--space-3)">
+                  <div className="flex flex-col gap-(--space-3)">
                     {error && (session.step === "interview" ? (
                       <Notice tone="danger" actions={<Button kind="outline" onClick={() => send({ type: "retry" })} disabled={busy}>Retry</Button>}>
                         The interviewer didn&apos;t answer: {error}
@@ -186,6 +197,7 @@ export default function Studio({ initialId, pending }: { initialId?: string; pen
                       <Composer session={session} busy={busy} text={text} setText={setText} onAnswer={answer} onResolve={(choice) => send({ type: "resolve", choice })} />
                     )}
                   </div>
+                  <Ledger log={session.log} />
                 </>
               )}
             </section>
@@ -194,14 +206,12 @@ export default function Studio({ initialId, pending }: { initialId?: string; pen
               <SpecPanel session={session} busy={busy} onEdit={(key, value) => send({ type: "edit", key, value }, `#edit-${key}-btn`)} />
             </aside>
           </div>
+          </div>
         )}
       </main>
     </>
   );
 }
-
-/** The steps, as the margin's flow strip (mono, figure-numbered). */
-const FLOW = ["Interview", "Scope", "Tests", "Blueprint", "Review"];
 
 /**
  * Start (K4, Rayyan): the loud moment is type. A display statement straight on paper, left-aligned,
@@ -214,23 +224,18 @@ function StartScreen({ text, setText, busy, error, onStart }: {
     <div className="grid gap-(--space-6) lg:grid-cols-12 lg:pt-(--space-5)">
       <form className="flex flex-col gap-(--space-4) lg:col-span-7" onSubmit={(e) => { e.preventDefault(); onStart(text); }}>
         <h1 className="display text-ink">What do you keep answering <span className="text-ink-muted">over and over?</span></h1>
-        <TextField id="idea" label="Describe the agent you wish existed, in one sentence." multiline rows={3} maxLength={1000}
-          value={text} onChange={setText} placeholder="e.g. Something that answers change-of-major questions" />
+        <TextField id="idea" label="Describe the agent you wish existed, in one sentence." multiline autosize rows={3} maxLength={1000}
+          value={text} onChange={setText} placeholder="e.g. Something that answers change-of-major questions"
+          onKeyDown={submitOnEnter({ empty: !text.trim(), busy }, () => onStart(text))} />
         {error && <Notice tone="danger">{error}</Notice>}
         <div className="flex flex-wrap items-center gap-(--space-3)">
           <Button type="submit" disabled={busy || !text.trim()}>{busy ? "Starting…" : "Start the interview"}</Button>
           <Button kind="link" onClick={() => setText(EXAMPLE_IDEA)}>Use Dana&apos;s example</Button>
         </div>
+        <KeyHint items={[["Enter", "to start"], ["Shift + Enter", "for a new line"]]} />
       </form>
       <aside aria-label="How it works" className="flex flex-col gap-(--space-4) lg:col-span-3 lg:col-start-10 lg:pt-(--space-3)">
-        <ol>
-          {FLOW.map((step, i) => (
-            <li key={step} className="flex items-baseline gap-(--space-3) border-b border-hairline py-(--space-2) last:border-b-0">
-              <span className="label text-ink-muted">{String(i + 1).padStart(2, "0")}</span>
-              <span className="small text-ink">{step}</span>
-            </li>
-          ))}
-        </ol>
+        <FlowRail variant="margin" />
         <p className="small font-normal text-ink-muted">Prototype. Public, Level 1–2 data only. Never student records.</p>
       </aside>
     </div>
@@ -328,32 +333,56 @@ export function DoneBanner({ review: r, onNewIdea }: { review: SessionReview; on
   );
 }
 
-const YOU: Decision["kind"][] = ["idea", "answer", "resolve", "edit", "scope"];
-const TOOL_LABEL: Partial<Record<NonNullable<Decision["kind"]>, string>> = { flag: "Flagged", blocked: "Blocked", done: "Done" };
-
-/** The interview so far: the requester's words on paper-sunk, the tool's questions numbered. */
-export function Transcript({ log }: { log: Decision[] }) {
-  const end = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    end.current?.scrollIntoView({ behavior: still ? "auto" : "smooth", block: "end" }); // returns a Promise in newer browsers; don't return it
-  }, [log.length]);
-  const qNum = log.map((_, i) => log.slice(0, i + 1).filter((d) => d.kind === "question").length);
+/** A missing ?s= session: type-only empty state with one way forward. */
+export function SessionNotFound({ onNew }: { onNew: () => void }) {
   return (
-    <div className="flex flex-col gap-(--space-3)" aria-live="polite">
-      {log.map((d, i) => {
-        if (d.kind && YOU.includes(d.kind)) return <ChatRow key={i} from="you">{d.what}</ChatRow>;
-        if (d.kind === "question") return <ChatRow key={i} from="tool" label={`Question ${qNum[i]}`}>{d.what}</ChatRow>;
-        const label = d.kind && TOOL_LABEL[d.kind];
-        if (label) return <ChatRow key={i} from="tool" label={label}>{d.what}</ChatRow>;
-        return <ChatRow key={i} from="tool" quiet>{d.what}</ChatRow>;
-      })}
-      <div ref={end} />
-    </div>
+    <EmptyState mark="Not found." action={<Button onClick={onNew}>Start a new idea</Button>}>
+      That link doesn&apos;t match a session on this server.
+    </EmptyState>
   );
 }
 
-function Composer({ session, busy, text, setText, onAnswer, onResolve }: {
+type LedgerRow = { q: string; a?: string; tool?: boolean };
+
+/** Earlier Q&A from the log, newest first. The unanswered current question is left out. */
+function ledgerRows(log: Decision[]): LedgerRow[] {
+  const rows: LedgerRow[] = [];
+  let asked: string | undefined;
+  for (const d of log) {
+    if (d.kind === "idea") rows.push({ q: "Your idea", a: d.what });
+    else if (d.kind === "question") asked = d.what;
+    else if (d.kind === "answer") { rows.push({ q: asked ?? "Answer", a: d.what }); asked = undefined; }
+    else if (d.kind === "resolve") rows.push({ q: "Data choice", a: d.what });
+    else if (d.kind === "flag" || d.kind === "blocked" || d.kind === "done") rows.push({ q: d.what, tool: true });
+  }
+  return rows.reverse();
+}
+
+/**
+ * The interview so far, as given: read-only history under the current question (K5a). The spec
+ * panel is the only editor, so after an edit the two can differ; the heading says so.
+ * No live region: focus moving to the new question announces the change.
+ */
+export function Ledger({ log }: { log: Decision[] }) {
+  const rows = ledgerRows(log);
+  if (!rows.length) return null;
+  return (
+    <section aria-labelledby="ledger-heading" className="flex flex-col gap-(--space-2)">
+      <h2 id="ledger-heading" className="label uppercase text-ink-muted">Your answers, as given</h2>
+      <ol>
+        {rows.map((r, i) => (
+          <li key={i} className="border-b border-hairline py-(--space-2) last:border-b-0">
+            <p className="small font-normal text-ink-muted">{r.q}</p>
+            {!r.tool && <p className="body mt-(--space-1) whitespace-pre-wrap text-ink">{r.a}</p>}
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+/** The current question as the statement (heading-2), its field under it; the pushback takes its place while it blocks. */
+export function Composer({ session, busy, text, setText, onAnswer, onResolve }: {
   session: Session; busy: boolean; text: string; setText: (s: string) => void;
   onAnswer: (s: string) => void; onResolve: (c: ResolveChoice) => void;
 }) {
@@ -362,8 +391,13 @@ function Composer({ session, busy, text, setText, onAnswer, onResolve }: {
   if (busy || !session.question) return <p className="small font-normal text-ink-muted">{busy ? "Thinking…" : "Waiting for the interviewer."}</p>;
 
   const q = session.question;
+  const n = session.log.filter((d) => d.kind === "question").length + 1;
   return (
-    <form onSubmit={(e) => { e.preventDefault(); onAnswer(text); }} className="flex flex-col gap-(--space-2)">
+    <form onSubmit={(e) => { e.preventDefault(); onAnswer(text); }} className="flex flex-col gap-(--space-3)">
+      <div className="flex flex-col gap-(--space-1)">
+        <p className="label uppercase text-ink-muted">Question {n}</p>
+        <h2 className="heading-2 text-ink">{q.ask}</h2>
+      </div>
       {q.chips.length > 0 && (
         <div className="flex flex-wrap gap-(--space-2)">
           {q.chips.map((c) => (
@@ -371,10 +405,12 @@ function Composer({ session, busy, text, setText, onAnswer, onResolve }: {
           ))}
         </div>
       )}
-      <div className="flex flex-wrap items-end gap-(--space-2)">
-        <TextField id="answer" label={q.ask} hideLabel multiline rows={2} value={text} onChange={setText} className="min-w-0 flex-1"
-          placeholder="Your answer, in your own words"
-          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onAnswer(text); } }} />
+      {/* The field's name stays the question (sr-only label), so focus on it reads the question. */}
+      <TextField id="answer" label={q.ask} hideLabel multiline autosize rows={2} value={text} onChange={setText}
+        placeholder="Your answer, in your own words"
+        onKeyDown={submitOnEnter({ empty: !text.trim(), busy }, () => onAnswer(text))} />
+      <div className="flex flex-wrap items-center justify-between gap-(--space-3)">
+        <KeyHint items={[["Enter", "to send"], ["Shift + Enter", "for a new line"]]} />
         <Button type="submit" disabled={!text.trim()}>Send</Button>
       </div>
     </form>

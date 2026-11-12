@@ -5,6 +5,7 @@ import type { ReviewDecision, ReviewRound, ReviewView } from "@/lib/types";
 import type { ReviewAction, ReviewResponse } from "@/lib/api";
 import { BlueprintView, ExportBar } from "@/components/blueprint";
 import { Button } from "@/components/kiln/Button";
+import { EmptyState } from "@/components/EmptyState";
 import { ModeBadge } from "@/components/ModeBadge";
 import { Notice } from "@/components/Notice";
 import { TextField } from "@/components/TextField";
@@ -116,11 +117,7 @@ export default function Reviewer({ reviewId }: { reviewId: string }) {
   if (missing) {
     return (
       <Shell mode={mode}>
-        {/* Empty state without a backdrop (plan-kiln §2): heading-2 and one sentence. */}
-        <div role="alert" className="flex max-w-xl flex-col gap-(--space-2) py-(--space-6)">
-          <h1 className="heading-2 text-ink">This review link doesn&apos;t exist.</h1>
-          <p className="body text-ink-soft">Check the link with the person who sent it.</p>
-        </div>
+        <ReviewNotFound />
       </Shell>
     );
   }
@@ -155,6 +152,15 @@ export default function Reviewer({ reviewId }: { reviewId: string }) {
         </div>
       </div>
     </Shell>
+  );
+}
+
+/** A bad review link: type-only empty state, one way forward. */
+export function ReviewNotFound() {
+  return (
+    <EmptyState mark="Not found." action={<Button kind="outline" href="/">Go to the start</Button>}>
+      This review link doesn&apos;t exist. Check the link with the person who sent it.
+    </EmptyState>
   );
 }
 
@@ -195,7 +201,7 @@ export function DecisionForm({ enabled, busy, onDecide }: {
   return (
     <form className="flex flex-col gap-(--space-3) rounded-(--radius-md) border border-hairline bg-paper-raised p-(--space-3)" onSubmit={(e) => e.preventDefault()}>
       <h2 className="title text-ink">Your decision</h2>
-      <TextField id="review-note" label="Note to the requester (required to request changes or reject)" multiline rows={3}
+      <TextField id="review-note" label="Note to the requester (required to request changes or reject)" multiline autosize rows={3}
         value={note} onChange={setNote} disabled={!enabled} maxLength={2000} error={missingNote} fieldRef={field} />
       <div className="flex flex-wrap items-center gap-(--space-2)">
         <Button disabled={off} onClick={() => submit("approved")}>Approve</Button>

@@ -11,6 +11,7 @@ import { Button } from "@/components/kiln/Button";
 import { SpecSheet } from "@/components/kiln/SpecSheet";
 import { Tag } from "@/components/kiln/Tag";
 import { ChoiceList } from "@/components/ChoiceList";
+import { Figure } from "@/components/Figure";
 import { TextField } from "@/components/TextField";
 
 function cost(catalog: Catalog, role: ModelRole, scope: ScopeKey, knobs: Knobs): string {
@@ -32,6 +33,8 @@ export function ScopePicker({ session, catalog, busy, onChoose }: {
   const [raw, setRaw] = useState({ students: String(session.knobs.studentsPerMonth), convs: String(session.knobs.convsPerStudent) });
   const knobs = cleanKnobs({ studentsPerMonth: Number(raw.students), convsPerStudent: Number(raw.convs) });
   const sc = scopeByKey(scope);
+  const price = catalog[role].price;
+  const monthly = price ? estimate(scope, price, knobs).monthlyDollars : undefined;
 
   const pick = (k: ScopeKey) => {
     setScope(k);
@@ -88,7 +91,7 @@ export function ScopePicker({ session, catalog, busy, onChoose }: {
             label: "Est. cost / month",
             value: (
               <span className="flex flex-col gap-(--space-1) sm:items-end">
-                <span className="title">{cost(catalog, role, scope, knobs)}</span>
+                <span className="title">{monthly !== undefined ? <Figure live value={monthly} format={formatDollars} /> : "no list price"}</span>
                 <span className="text-ink-muted">
                   Estimate from {PRICE_SOURCE}, {PRICES_AS_OF}. Assumes ~{sc.inTok.toLocaleString("en-US")} input and ~{sc.outTok.toLocaleString("en-US")} output tokens per conversation.
                 </span>

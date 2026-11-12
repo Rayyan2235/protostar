@@ -4,7 +4,6 @@ import assert from "node:assert/strict";
 import { renderToStaticMarkup } from "react-dom/server";
 import { TopBar } from "./TopBar";
 import { TextField } from "./TextField";
-import { ChatRow } from "./ChatRow";
 import { Notice } from "./Notice";
 import { ChoiceList } from "./ChoiceList";
 
@@ -41,13 +40,6 @@ test("TextField hint is described too, and a hidden label stays in the markup", 
   const html = renderToStaticMarkup(<TextField id="a" label="Answer" hideLabel hint="Enter sends" value="" onChange={() => {}} />);
   assert.match(html, /aria-describedby="a-hint"/);
   assert.match(html, /<label[^>]*class="[^"]*sr-only/);
-});
-
-test("ChatRow marks who said it", () => {
-  assert.match(renderToStaticMarkup(<ChatRow from="you">Can I switch?</ChatRow>), /data-from="you"/);
-  const q = renderToStaticMarkup(<ChatRow from="tool" label="Question 2">What must it never do?</ChatRow>);
-  assert.match(q, /data-from="tool"/);
-  assert.match(q, /Question 2/);
 });
 
 test("Notice requires text and says its tone in words for danger", () => {

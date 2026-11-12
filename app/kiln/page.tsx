@@ -6,7 +6,10 @@ import { Tag } from "@/components/kiln/Tag";
 import { SpecSheet } from "@/components/kiln/SpecSheet";
 import { TopBar } from "@/components/TopBar";
 import { TextField } from "@/components/TextField";
-import { ChatRow } from "@/components/ChatRow";
+import { EmptyState } from "@/components/EmptyState";
+import { Figure } from "@/components/Figure";
+import { FlowRail } from "@/components/FlowRail";
+import { KeyHint } from "@/components/Kbd";
 import { Notice } from "@/components/Notice";
 import { ChoiceList } from "@/components/ChoiceList";
 
@@ -56,12 +59,21 @@ export default function KilnPreview() {
           </div>
         </Section>
 
-        <Section name="ChatRow">
-          <div className="flex flex-col gap-(--space-3)">
-            <ChatRow from="tool" quiet>Interviewer turn by offline-script.</ChatRow>
-            <ChatRow from="tool" label="Question 2">What must it never do?</ChatRow>
-            <ChatRow from="you">Never promise admission.</ChatRow>
-          </div>
+        <Section name="FlowRail · top (scope) and margin">
+          <FlowRail variant="top" step="scope" />
+          <div className="max-w-xs"><FlowRail variant="margin" /></div>
+        </Section>
+
+        <Section name="Kbd · KeyHint">
+          <KeyHint items={[["Enter", "to send"], ["Shift + Enter", "for a new line"]]} />
+        </Section>
+
+        <Section name="Figure (static)">
+          <p className="title text-ink">≈ <Figure value={112} format={(n) => `$${Math.round(n)}`} /> <span className="small font-normal text-ink-muted">[ESTIMATE NOTE]</span></p>
+        </Section>
+
+        <Section name="EmptyState">
+          <EmptyState mark="Not found." action={<Button kind="outline" href="/">Go to the start</Button>}>[ONE SENTENCE THAT SAYS WHAT HAPPENED]</EmptyState>
         </Section>
 
         <Section name="TextField">

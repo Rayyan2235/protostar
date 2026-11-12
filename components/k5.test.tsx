@@ -77,7 +77,7 @@ test("enterAction: Enter submits; Shift+Enter, IME composing and other keys pass
 
 // EmptyState
 test("EmptyState: one big word as the heading, one sentence, exactly one action, no art", () => {
-  const html = renderToStaticMarkup(<EmptyState mark="Not found." action={<a href="/">Go to the start</a>}>This link doesn&apos;t match anything.</EmptyState>);
+  const html = renderToStaticMarkup(<EmptyState mark="Not found." action={<button type="button">Start again</button>}>This link doesn&apos;t match anything.</EmptyState>);
   assert.match(html, /<h1[^>]*class="[^"]*display[^"]*"[^>]*>Not found\.<\/h1>/);
   assert.equal(count(html, "<a ") + count(html, "<button"), 1);
   assert.doesNotMatch(html, /<svg|<img|role="img"/);

@@ -8,6 +8,7 @@ import { Button } from "@/components/kiln/Button";
 import { SpecSheet } from "@/components/kiln/SpecSheet";
 import { Tag } from "@/components/kiln/Tag";
 import { DecisionLog } from "@/components/DecisionLog";
+import { Figure } from "@/components/Figure";
 import { Notice } from "@/components/Notice";
 
 type Audience = "requester" | "reviewer";
@@ -81,7 +82,7 @@ export function BlueprintView({ blueprint: bp, audience, status }: {
     <span className="flex flex-col gap-(--space-1) sm:items-end">
       <span>
         {scope.estimate
-          ? <>≈ <span className="font-semibold">{formatDollars(scope.estimate.monthlyDollars)}</span></>
+          ? <>≈ <span className="font-semibold"><Figure value={scope.estimate.monthlyDollars} format={formatDollars} /></span></>
           : "No list price on file for this model, so no estimate."}
       </span>
       <span className="text-ink-muted">{bp.costNote}</span>

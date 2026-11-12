@@ -10,7 +10,8 @@
  * when the interview ends, and when the data gate blocks.
  */
 import type {
-  Decision, DecisionKind, InterviewTurn, Level, Pushback, PushbackChoice, Question, ReviewDecision, Session, Slot, SlotKey, Source, Step, Who,
+  Decision, DecisionKind, Draft, InterviewTurn, Level, Pushback, PushbackChoice, Question, ReviewDecision, Role2, RunRef, Session, Slot, SlotKey,
+  Source, Step, Test, Who,
 } from "./types";
 import { SLOT_KEYS } from "./types";
 import { SCENARIO } from "./scenario";
@@ -52,6 +53,12 @@ export type Action =
   | { type: "SUBMIT_FOR_REVIEW"; reviewId: string; at: string }
   | { type: "REVIEW_OPENED"; version: number; at: string }
   | { type: "REVIEW_DECISION"; version: number; status: ReviewDecision; note?: string; at: string }
+  // Phase 2b (contract 9.5): types now, reducer cases in BE-10/BE-11. Until then they are not allowed anywhere.
+  | { type: "TESTS_RUN"; run: RunRef; draft: Draft; tests: Test[]; at: string }
+  | { type: "TESTS_FAILED"; message: string; at: string }
+  /** The engine fills flagged (scanText(value)) and checkFail (the test's own checks). */
+  | { type: "REWRITE_ANSWER"; testId: number; value: string; flagged: Source[]; checkFail?: string; at: string }
+  | { type: "ACCEPT_FAILURE"; testId: number; role: Role2; note: string; flagged: Source[]; at: string }
   | { type: "RESET"; at: string };
 
 export function initial(id: string, at: string): Session {

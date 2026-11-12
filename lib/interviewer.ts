@@ -6,32 +6,14 @@
  * Its output is advice. journey.ts decides which slot is asked and when the interview
  * ends; dataRules.ts decides data levels for every source a rule recognises.
  */
-import { z } from "zod";
-import { complete, provider } from "./llm";
-import { FALLBACK_QUESTIONS, PREFILLABLE, REQUIRED, missingSlots } from "./journey";
+import { complete, LLMError, provider } from "./llm";
+import { TurnSchema } from "./schemas";
+import { FALLBACK_QUESTIONS, REQUIRED, missingSlots } from "./journey";
 import { loadKnowledge } from "./knowledge";
 import { SLOT_KEYS, type InterviewTurn, type Level, type Session, type SlotKey } from "./types";
 
-const SLOT = z.enum(SLOT_KEYS);
-
-export const TurnSchema = z.object({
-  prefilled: z.array(z.object({
-    key: z.enum(PREFILLABLE),
-    value: z.string(),
-    confidence: z.number().describe("0 to 1. Use 0.8+ only when the idea or pages clearly answer it."),
-  })),
-  sources: z.array(z.object({
-    name: z.string().describe("The source as the requester described it"),
-    url: z.string().nullable(),
-    suggestedLevel: z.number().describe("Penn State data level: 1, 2, 3 or 4"),
-    reason: z.string(),
-  })).describe("Only sources named in the requester's latest message that the agent would read from. Empty if none."),
-  nextQuestion: z.object({
-    slot: SLOT,
-    ask: z.string().describe("One short, plain-language question"),
-    chips: z.array(z.string()).describe("2-3 short example answers the requester can tap"),
-  }).nullable(),
-});
+// BE-8 drops this re-export when the interviewer moves onto the offline fixture path.
+export { TurnSchema };
 
 const SLOT_MEANING: Record<SlotKey, string> = {
   users: "who will use the agent, and when",
@@ -93,6 +75,8 @@ export async function interviewTurn(s: Session, latest: string): Promise<TurnRes
     maxTokens: 2000,
     system: system(),
     messages: [{ role: "user", content: userMessage(s, latest) }],
+    // Unreachable: offline mode returns above. BE-8 replaces this with offlineTurnRaw(s).
+    offline: () => { throw new LLMError("unreachable: offline mode returns before this call"); },
   });
   return {
     model,

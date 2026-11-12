@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { Blueprint, ReviewView } from "@/lib/types";
 import { BlueprintView, ExportBar, SourceItem } from "./blueprint";
 import { ModeBadge } from "./ModeBadge";
-import { DecisionForm, Rounds, StatusNotice } from "@/app/review/[id]/reviewer";
+import { DecisionForm, ReviewNotFound, Rounds, StatusNotice } from "@/app/review/[id]/reviewer";
 
 const count = (html: string, needle: string) => html.split(needle).length - 1;
 const text = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
@@ -70,6 +70,14 @@ test("the cost sits next to its estimate note", () => {
   const html = renderToStaticMarkup(<BlueprintView blueprint={bp()} audience="reviewer" />);
   const row = html.match(/Est\. cost \/ month<\/dt>[\s\S]*?<\/dd>/)?.[0] ?? "";
   assert.match(row, /\$12\.50/);
+  assert.match(row, /Not a quote\./);
+});
+
+test("blueprint cost (K5a): a static Figure, no live region, the note beside it", () => {
+  const html = renderToStaticMarkup(<BlueprintView blueprint={bp()} audience="reviewer" />);
+  const row = html.match(/Est\. cost \/ month<\/dt>[\s\S]*?<\/dd>/)?.[0] ?? "";
+  assert.match(row, /tabular-nums/);
+  assert.doesNotMatch(html, /aria-live/);
   assert.match(row, /Not a quote\./);
 });
 
@@ -145,6 +153,19 @@ test("DecisionForm: Approve is the one pill; changes and reject are outlined", (
   assert.equal(count(html, "<button"), 3);
   assert.match(html, /<label[^>]*for="review-note"/);
   assert.match(html, /<textarea[^>]*id="review-note"/);
+});
+
+test("reviewer note (K5a): autosize, but no Enter shortcut and no Kbd hint", () => {
+  const html = renderToStaticMarkup(<DecisionForm enabled busy={false} onDecide={async () => true} />);
+  assert.match(html, /<textarea[^>]*id="review-note"[^>]*class="[^"]*resize-none/);
+  assert.equal(count(html, "<kbd"), 0);
+});
+
+test("a bad review link is a type-only EmptyState with one action", () => {
+  const html = renderToStaticMarkup(<ReviewNotFound />);
+  assert.match(html, /<h1[^>]*display/);
+  assert.equal(count(html, "<button") + count(html, "<a "), 1);
+  assert.match(text(html), /review link doesn/);
 });
 
 test("DecisionForm disabled: no pill arrow, controls disabled, says why", () => {

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Session } from "@/lib/types";
 import type { Catalog } from "@/lib/engine";
-import Studio, { DoneBanner, nextFocus, PushbackCard, SlotEditor, SpecPanel, TestsStep, Transcript } from "./studio";
+import Studio, { Composer, DoneBanner, Ledger, nextFocus, PushbackCard, SessionNotFound, SlotEditor, SpecPanel, TestsStep } from "./studio";
 import { ScopePicker, ScopeSummary } from "./scope";
 
 const count = (html: string, needle: string) => html.split(needle).length - 1;
@@ -94,12 +94,48 @@ test("the slot edit field is a labelled TextField named after the slot", () => {
   assert.match(text(html), /Cancel/);
 });
 
-test("transcript: requester rows say You to screen readers; questions are numbered", () => {
-  const html = renderToStaticMarkup(<Transcript log={session().log} />);
-  assert.equal(count(html, 'data-from="you"'), 2);
-  assert.match(text(html), /Question 1/);
-  assert.match(text(html), /Flagged/);
-  assert.match(html, /aria-live="polite"/);
+test("ledger (K5a): earlier Q&A as given, newest first, read-only, no live region", () => {
+  const html = renderToStaticMarkup(<Ledger log={session().log} />);
+  const t = text(html);
+  assert.match(t, /Your answers, as given/);
+  assert.match(t, /Who uses it\? Sophomores/);
+  assert.match(t, /Your idea Something that helps students switch into Finance\./);
+  assert.ok(t.indexOf("Flagged degree audits") < t.indexOf("Who uses it?"), "newest first");
+  assert.doesNotMatch(html, /aria-live|<button|<textarea|<input/);
+});
+
+test("interview (K5a): the current question is a heading-2 and the answer field's name is that question", () => {
+  const s = session();
+  const html = renderToStaticMarkup(<Composer session={s} busy={false} text="" setText={() => {}} onAnswer={() => {}} onResolve={() => {}} />);
+  assert.match(html, /<h2[^>]*class="heading-2[^"]*"[^>]*>What must it never do\?<\/h2>/);
+  const label = html.match(/<label[^>]*for="answer"[^>]*>([^<]*)<\/label>/)?.[1];
+  assert.equal(label, s.question!.ask, "accessible name = the current question");
+  assert.match(text(html), /Question 2/);
+  assert.match(html, /<textarea[^>]*id="answer"[^>]*class="[^"]*resize-none/);
+  assert.equal(count(html, "<kbd"), 2, "Enter and Shift + Enter, in words");
+  assert.match(text(html), /Promise admission/);
+  assert.equal(count(html, 'data-chip="arrow"'), 0, "Send is disabled until there is text");
+});
+
+test("interview (K5a): while the pushback blocks, the Notice takes the question's place", () => {
+  const s = session({ pushback: { blocking: true, flagged: ["Degree audits"], flaggedRules: [], options: ["selfreport", "route"], attempts: 1 } });
+  const html = renderToStaticMarkup(<Composer session={s} busy={false} text="" setText={() => {}} onAnswer={() => {}} onResolve={() => {}} />);
+  assert.match(html, /role="alert"/);
+  assert.doesNotMatch(html, /What must it never do/);
+  assert.doesNotMatch(html, /id="answer"/);
+});
+
+test("a missing ?s= session is a type-only EmptyState with one action", () => {
+  const html = renderToStaticMarkup(<SessionNotFound onNew={() => {}} />);
+  assert.match(html, /<h1[^>]*display/);
+  assert.equal(count(html, "<button") + count(html, "<a "), 1);
+});
+
+test("start screen (K5a): the margin FlowRail has no active step; Enter is shown in words", () => {
+  const html = renderToStaticMarkup(<Studio />);
+  assert.equal(count(html, "aria-current"), 0);
+  assert.match(html, /<kbd[^>]*>Enter<\/kbd>/);
+  assert.match(html, /<textarea[^>]*id="idea"[^>]*class="[^"]*resize-none/);
 });
 
 test("pushback: an alert with each option as a button and a way past; no pill", () => {
@@ -140,6 +176,14 @@ test("scope picker: two radiogroups with one tab stop each, a cost SpecSheet wit
   assert.match(text(html), /Recommended/);
   assert.match(html, /<label[^>]*for="students"/);
   assert.match(html, /<label[^>]*for="convs"/);
+});
+
+test("scope cost (K5a): a live Figure in the server markup, the estimate note beside it", () => {
+  const html = renderToStaticMarkup(<ScopePicker session={session({ step: "scope" })} catalog={catalog} busy={false} onChoose={() => {}} />);
+  const row = html.match(/Est\. cost \/ month<\/dt>[\s\S]*?<\/dd>/)?.[0] ?? "";
+  assert.match(row, /tabular-nums/);
+  assert.match(row, /aria-live="polite"/);
+  assert.match(row, /Estimate from/);
 });
 
 test("scope summary keeps the estimate wording next to the cost", () => {

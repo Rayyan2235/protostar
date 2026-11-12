@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { classifySource, editFlags, gate, scanText } from "./dataRules";
+import { classifySource, editFlags, gate, normalise, RULES, scanText } from "./dataRules";
 import type { Pushback, SlotKey } from "./types";
 
 test("degree audits are Level 3 by rule, whatever the model suggests", () => {
@@ -218,4 +218,81 @@ test("pinned fail-closed hits (deliberate)", () => {
     assert.deepEqual(ruleIds(editFlags(slot, "Never: transcripts")), ["transcript"], `${slot}: colon`);
     assert.deepEqual(ruleIds(editFlags(slot, "never\ttranscripts")), ["transcript"], `${slot}: tab`);
   }
+});
+
+// --- Normalisation (BE-4d, contract §6) ---------------------------------------------------
+
+/** Every multi-word Level 3-4 term and the rule it must trigger. */
+const MULTI_WORD_TERMS: [string, string][] = [
+  ["degree audit", "degree-audit"], ["what if report", "degree-audit"], ["academic requirements report", "degree-audit"],
+  ["advising transcript", "transcript"], ["grade report", "grades"], ["their grades", "grades"],
+  ["student id", "student-id"], ["psu id", "student-id"], ["id number", "student-id"], ["access account id", "student-id"],
+  ["lionpath records", "records-system"], ["starfish notes", "records-system"], ["advising notes", "records-system"],
+  ["student records", "records-system"], ["social security number", "ssn"], ["medical records", "health"],
+  ["health history", "health"], ["financial aid account", "finaid"], ["bank account", "finaid"],
+];
+/** How a requester (or a paste) might write the space inside a term. */
+const TERM_VARIANTS: [string, (term: string) => string][] = [
+  ["hyphen", (t) => t.replace(/ /g, "-")],
+  ["double space", (t) => t.replace(/ /g, "  ")],
+  ["line break", (t) => t.replace(/ /g, "\n")],
+  ["NBSP", (t) => t.replace(/ /g, " ")],
+  ["U+2011", (t) => t.replace(/ /g, "‑")],
+  ["U+200B", (t) => t.replace(/ /g, "​")],
+  ["upper case", (t) => t.toUpperCase()],
+];
+
+test("every multi-word record term is caught however the space is written", () => {
+  const missed: string[] = [];
+  for (const [term, rule] of MULTI_WORD_TERMS) {
+    for (const [name, variant] of TERM_VARIANTS) {
+      const text = `students paste their ${variant(term)}`;
+      if (!ruleIds(editFlags("sources", text)).includes(rule)) missed.push(`${name}: ${JSON.stringify(text)}`);
+    }
+  }
+  assert.deepEqual(missed, []);
+});
+
+test("obfuscated terms from TESTER-BE's be4c-attack table hit", () => {
+  for (const text of [
+    "students paste their degree​audit",
+    "students paste their degree audit",
+    "students paste their degree-audit",
+    "students paste their degree‑audit",
+    "students paste their DEGREE AUDIT",
+    "students paste their degree  audit",
+    "students paste their degree\naudit",
+    "No API--students paste their degree audit",
+    "No \"API\" students paste their degree audit",
+    "Don’t worry, students paste their degree audit",
+    "never read transcripts but degree audits are pasted",
+  ]) {
+    assert.ok(editFlags("sources", text).length > 0, JSON.stringify(text));
+  }
+  for (const text of ["Never promise admission, so students paste their degree audit", "Never promise admission. Students paste their degree audit"]) {
+    assert.ok(editFlags("never", text).length > 0, JSON.stringify(text));
+  }
+});
+
+test("model-named sources go through the same normalisation", () => {
+  assert.equal(classifySource({ name: "Pasted DEGREE AUDIT" }).ruleId, "degree-audit");
+  assert.equal(classifySource({ name: "student‑id lookup" }).ruleId, "student-id");
+});
+
+test("no rule pattern contains a literal space", () => {
+  assert.deepEqual(RULES.filter((r) => r.pattern.source.includes(" ")).map((r) => r.id), []);
+});
+
+test("normalise: compatibility forms, spaces and zero-width characters; line breaks stay", () => {
+  assert.equal(normalise("ＤＥＧＲＥＥ"), "DEGREE");
+  assert.equal(normalise("degree audit"), "degree audit");
+  assert.equal(normalise("degree​audit"), "degreeaudit");
+  assert.equal(normalise("a‌‍⁠﻿b"), "ab");
+  assert.equal(normalise("line\nbreak sep\r\ntab\t"), "line\nbreak sep\r\ntab\t");
+});
+
+test("a negation still hides a normalised term", () => {
+  assert.deepEqual(editFlags("sources", "never read degree-audit data"), []);
+  assert.deepEqual(editFlags("sources", "never read degree audits"), []);
+  assert.deepEqual(editFlags("never", "Never ask for degree-audits, transcripts or student IDs"), []);
 });

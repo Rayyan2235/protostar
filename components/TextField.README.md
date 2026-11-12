@@ -6,6 +6,7 @@ Why: every form in the app needs the same label wiring, error state and focus ri
 
 **The consumer provides:** `id`, `label`, `value` and `onChange(value)`. Optional:
 - `multiline` and `rows`;
+- `autosize` and `maxRows` (multiline only; default 6);
 - `error` and `hint`;
 - `hideLabel`;
 - `fieldRef`;
@@ -18,3 +19,4 @@ Why: every form in the app needs the same label wiring, error state and focus ri
   * shows the message in words, in `danger` text.
 * The border is `ink-muted`, so the field's edge holds 3:1 on `paper-raised`. Don't use `hairline` or `stone` for it.
 * Focus: a solid 2px `accent` ring with a 3px offset.
+* `autosize`: the textarea grows with its content up to `maxRows`, then scrolls. It has no resize grip. The server renders `rows`, so the first paint is stable. Behaviour inspired by common autosize textareas; our own code.

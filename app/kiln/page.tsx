@@ -12,6 +12,9 @@ import { Notice } from "@/components/Notice";
 import { ChoiceList } from "@/components/ChoiceList";
 import { MotionSwitch } from "@/components/MotionSwitch";
 import { StartScene } from "@/components/StartScene";
+import { ResultTable } from "@/components/ResultTable";
+import { DecisionLog } from "@/components/DecisionLog";
+import { ModeBadge } from "@/components/ModeBadge";
 
 export const metadata: Metadata = { title: "Kiln parts · Protostar" };
 
@@ -94,6 +97,33 @@ export default function KilnPreview() {
             { value: "faq", title: "FAQ only", detail: "[ONE LINE]", meta: "[COST]", marks: <Tag>Low risk</Tag> },
             { value: "guided", title: "Guided eligibility check", detail: "[ONE LINE]", meta: "[COST]", marks: <><Tag>Medium risk</Tag><Tag selected>Recommended</Tag></> },
             { value: "open", title: "Open advising assistant", detail: "[ONE LINE]", meta: "[COST]", marks: <Tag>High risk</Tag> },
+          ]} />
+        </Section>
+        <Section name="ResultTable">
+          <ResultTable caption="Example results" columns={[{ title: "Cheap", note: "[MODEL]" }, { title: "Capable", note: "[MODEL]" }]} rows={[
+            { id: 1, label: "Test 1 · [FROM]", title: "[STUDENT PROMPT]", cells: [
+              { pass: false, verdict: "Fail", reason: "[ONE-SENTENCE REASON]" },
+              { pass: true, verdict: "Pass", reason: "[ONE-SENTENCE REASON]" },
+            ], actions: <Button kind="outline">[ACTION]</Button> },
+            { id: 2, label: "Test 2 · [FROM]", title: "[STUDENT PROMPT]", cells: [
+              { pass: true, verdict: "Pass", reason: "[ONE-SENTENCE REASON]" },
+              null,
+            ] },
+          ]} />
+        </Section>
+
+        <Section name="ModeBadge">
+          <div className="flex flex-wrap gap-(--space-2)">
+            <ModeBadge mode="offline" />
+            <ModeBadge mode="anthropic" />
+          </div>
+        </Section>
+
+        <Section name="DecisionLog">
+          <DecisionLog log={[
+            { at: "", who: "requester", what: "[WHAT THE REQUESTER DECIDED]" },
+            { at: "", who: "tool", what: "[WHAT THE TOOL DID]" },
+            { at: "", who: "reviewer", what: "[WHAT THE REVIEWER DECIDED]" },
           ]} />
         </Section>
       </main>

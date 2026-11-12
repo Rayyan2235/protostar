@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { ResultTable, type ResultRow } from "./ResultTable";
 
 const count = (html: string, needle: string) => html.split(needle).length - 1;
-const text = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+const text = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/&#x27;/g, "'").replace(/\s+/g, " ");
 
 const rows: ResultRow[] = [
   { id: 1, label: "Test 1 · top question", title: "What GPA do I need?", cells: [

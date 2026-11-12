@@ -318,3 +318,16 @@ test("normalise runs before the negation check (pinned)", () => {
   // "never\u200bread" becomes "neverread": no negation word, so it hits (fails closed).
   assert.deepEqual(ruleIds(editFlags("sources", "never\u200bread transcripts")), ["transcript"]);
 });
+
+test("snake_case terms match: an underscore is a gap, and record terms use letter/digit edges", () => {
+  assert.ok(ruleIds(editFlags("sources", "my_degree_audit.pdf")).includes("degree-audit"));
+  assert.ok(ruleIds(editFlags("sources", "student_id")).includes("student-id"));
+  assert.ok(ruleIds(editFlags("sources", "degree_audit")).includes("degree-audit"));
+});
+
+test("URLs on psu.edu stay Level 1; longer words that contain a term don't match", () => {
+  assert.equal(classifySource({ name: "https://www.psu.edu/x" }).level, 1);
+  assert.equal(classifySource({ name: "bulletins.psu.edu" }).level, 1);
+  assert.deepEqual(editFlags("sources", "studentidentity"), []);
+  assert.deepEqual(editFlags("sources", "transcriptsx"), []);
+});

@@ -54,10 +54,15 @@ export function classifySource(
 }
 
 const NEGATION = /\b(never|not|no|don'?t|do not|doesn'?t|without|avoid|refuse|stop)\b[^.;!?]{0,40}$/i;
-/** Clause boundaries: sentence ends, ; and :, and "but". */
-const CLAUSE_END = /[.!?](?=\s|$)|[;:]|\bbut\b/gi;
+/**
+ * Clause boundaries in every slot: sentence ends, ; and :, line breaks and tabs, brackets,
+ * en and em dashes, a spaced hyphen or slash, and "but". An unspaced hyphen or slash
+ * ("self-report", "and/or") stays inside the clause.
+ */
+const BOUNDARIES = String.raw`[.!?](?=\s|$)|[;:()\t\r\n–—]|\s-\s|\s\/\s|\bbut\b`;
+const CLAUSE_END = new RegExp(BOUNDARIES, "gi");
 /** Every slot but never also splits at commas: "No problem, students paste their audit". */
-const CLAUSE_END_COMMA = /[.!?](?=\s|$)|[;:,]|\bbut\b/gi;
+const CLAUSE_END_COMMA = new RegExp(`${BOUNDARIES}|,`, "gi");
 
 /** The requester's text from the start of the clause up to `index`. */
 function clauseBefore(text: string, index: number, slot?: SlotKey): string {

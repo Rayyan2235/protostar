@@ -13,3 +13,6 @@ Why: the idea and answer fields send on Enter, and people should see that withou
 * Enter submits. Shift+Enter adds a new line. Enter does nothing while IME is composing, and is blocked while the field is empty or busy.
 * Only use it on a field with one target. The reviewer note has three decisions, so it gets no shortcut and no hint.
 * Show only shortcuts that really work.
+
+## Project override (K6a)
+* `<kbd>` uses `--radius-control` (4px).

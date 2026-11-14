@@ -98,7 +98,7 @@ export default function KilnPreview() {
 function Section({ name, children }: { name: string; children: ReactNode }) {
   return (
     <section className="flex flex-col gap-(--space-3)">
-      <h2 className="label uppercase text-ink-muted">{name}</h2>
+      <h2 className="label text-ink-muted">{name}</h2>
       {children}
     </section>
   );

@@ -77,7 +77,7 @@ export function TextField({
     onChange: onChange ? (e: ChangeEvent<FieldEl>) => onChange(e.target.value) : undefined,
     "aria-invalid": error ? true : undefined,
     "aria-describedby": describedBy,
-    className: (grow ? "resize-none " : "") + "w-full rounded-(--radius-sm) border border-ink-muted bg-paper-raised px-(--space-2) py-(--space-2) body text-ink placeholder:text-ink-muted outline-none focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-accent aria-invalid:border-danger disabled:bg-paper-sunk disabled:text-ink-muted read-only:bg-paper-sunk",
+    className: (grow ? "resize-none " : "") + "w-full rounded-(--radius-control) border border-ink-muted bg-paper-raised px-(--space-2) py-(--space-2) body text-ink placeholder:text-ink-muted outline-none focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-accent aria-invalid:border-danger disabled:bg-paper-sunk disabled:text-ink-muted read-only:bg-paper-sunk",
   };
   return (
     <div className={`flex flex-col gap-(--space-1) ${className}`}>

@@ -7,7 +7,7 @@ import type { Decision } from "@/lib/types";
 export function DecisionLog({ log }: { log: Decision[] }) {
   return (
     <details>
-      <summary className="label cursor-pointer uppercase text-ink-muted focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-accent">
+      <summary className="label cursor-pointer text-ink-muted focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-accent">
         Decision log ({log.length})
       </summary>
       <ol className="mt-(--space-2)">

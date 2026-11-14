@@ -5,10 +5,11 @@
 /*
  * Tailwind speaks only Kiln (ADR 0012, plan-kiln K3). Each default namespace is reset, then Kiln's
  * tokens are mapped back: bg-paper, text-ink, p-3 (= space-3), rounded-md (= radius-md),
- * shadow-sheet, ease-out... A Tailwind default colour, or p-7, now generates nothing.
+ * ease-out... A Tailwind default colour, or p-7, now generates nothing. Shadows map to nothing
+ * (K6a: depth comes from tone), so no shadow utility exists.
  * Arbitrary values still read tokens: p-(--space-3), duration-(--dur-quick).
  *
- * Where a Kiln name equals a Tailwind theme name (--font-*, --shadow-*, --ease-*, --radius-*),
+ * Where a Kiln name equals a Tailwind theme name (--font-*, --ease-*, --radius-*),
  * Tailwind also writes "--x: var(--x)" into its theme layer. tokens.css is unlayered, so its value wins.
  */
 @theme inline {
@@ -54,13 +55,11 @@
   --radius-lg: var(--radius-lg);
   --radius-frame: var(--radius-frame);
   --radius-pill: var(--radius-pill);
+  --radius-control: var(--radius-control);
 
   --font-display: var(--font-display);
   --font-body: var(--font-body);
   --font-mono: var(--font-mono);
-
-  --shadow-float: var(--shadow-float);
-  --shadow-sheet: var(--shadow-sheet);
 
   --ease-out: var(--ease-out);
   --ease-inout: var(--ease-inout);
@@ -75,4 +74,20 @@ body {
   background: var(--paper);
   color: var(--ink);
   font-family: var(--font-body);
+}
+
+/* PaperGrain (K6a): one fixed, aria-hidden div behind content. Static; gone where it can't help. */
+.paper-grain {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--grain);
+  opacity: var(--grain-opacity);
+}
+@media (forced-colors: active) {
+  .paper-grain { display: none; }
+}
+@media print {
+  .paper-grain { display: none; }
 }

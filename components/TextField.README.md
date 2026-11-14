@@ -20,3 +20,6 @@ Why: every form in the app needs the same label wiring, error state and focus ri
 * The border is `ink-muted`, so the field's edge holds 3:1 on `paper-raised`. Don't use `hairline` or `stone` for it.
 * Focus: a solid 2px `accent` ring with a 3px offset.
 * `autosize`: the textarea grows with its content up to `maxRows`, then scrolls. It has no resize grip. The server renders `rows`, so the first paint is stable. Behaviour inspired by common autosize textareas; our own code.
+
+## Project override (K6a)
+* The field uses `--radius-control` (4px).

@@ -113,7 +113,7 @@ export function ScopeSummary({ session }: { session: Session }) {
   const e = session.estimate;
   return (
     <section className="flex flex-col gap-(--space-2)">
-      <h2 className="label uppercase text-ink-muted">Scope &amp; cost</h2>
+      <h2 className="label text-ink-muted">Scope &amp; cost</h2>
       <p className="flex flex-wrap items-center gap-(--space-2)">
         <span className="small text-ink">{sc.label}</span>
         <Tag>{sc.risk} risk</Tag>

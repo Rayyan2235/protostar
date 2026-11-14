@@ -9,5 +9,5 @@ Why: Kiln's app-shell recipe asks for a top bar. NavPill is meant for marketing 
 
 **The consumer provides:** `title`, an optional `subtitle`, and the right-side controls as children (mode badge, one action).
 
-* Don't put a call-to-action pill here. The screen's one pill lives in the content.
+* Don't put a call-to-action here. The screen's one filled primary lives in the content.
 * The width matches the page (`max-w-6xl`). The gutter is `space-3` on phones and `space-6` on desktop.

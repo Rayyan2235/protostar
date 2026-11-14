@@ -217,7 +217,7 @@ export function DecisionForm({ enabled, busy, onDecide }: {
 export function Rounds({ view }: { view: ReviewView }) {
   return (
     <section className="flex flex-col gap-(--space-2)">
-      <h2 className="label uppercase text-ink-muted">Rounds ({view.rounds.length})</h2>
+      <h2 className="label text-ink-muted">Rounds ({view.rounds.length})</h2>
       <ol>
         {view.rounds.map((r) => (
           <li key={r.version} className="border-b border-hairline py-(--space-2)">

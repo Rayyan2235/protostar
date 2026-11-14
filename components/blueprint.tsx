@@ -46,7 +46,7 @@ function Section({ title, aside, children }: { title: string; aside?: ReactNode;
   return (
     <section>
       <div className="mb-(--space-2) flex flex-wrap items-center justify-between gap-(--space-2)">
-        <h3 className="label uppercase text-ink-muted">{title}</h3>
+        <h3 className="label text-ink-muted">{title}</h3>
         {aside}
       </div>
       {children}

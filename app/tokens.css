@@ -112,3 +112,26 @@
 .small { font-family: var(--font-body); font-size: 14px; line-height: 20px; font-weight: 500; letter-spacing: 0; }
 .label { font-family: var(--font-mono); font-size: 12px; line-height: 16px; font-weight: 400; letter-spacing: 1.4px; }
 .hand { font-family: var(--font-hand); font-size: 24px; line-height: 1.15; font-weight: 500; letter-spacing: 0; }
+
+/* ---------------------------------------------------------------------------------------------
+   Project overrides (ADR 0012 addendum 2), plan-kiln K6a. Kiln's lines above stay as copied.
+   Each is a Kiln deviation listed for Rayyan in the PR body; drop one by deleting its lines.
+   --------------------------------------------------------------------------------------------- */
+:root {
+  /* Controls lose the pill: buttons, the arrow chip, Tag, TextField, Kbd. Round stays only where
+     shape means something (the ChoiceList dot, Tag's live dot). */
+  --radius-control: 4px;
+  /* PaperGrain: a static surface finish from ink, so it follows each theme.
+     Bound: --grain-opacity x --grain-share <= 0.04 (contrast.test.ts checks the worst case). */
+  --grain-share: 8%;
+  --grain-opacity: 0.5;
+  --grain:
+    radial-gradient(color-mix(in oklab, var(--ink) var(--grain-share), transparent) 0.6px, transparent 0.8px) 0 0 / 3px 3px,
+    radial-gradient(color-mix(in oklab, var(--ink) var(--grain-share), transparent) 0.5px, transparent 0.7px) 1px 2px / 5px 5px,
+    radial-gradient(color-mix(in oklab, var(--ink) var(--grain-share), transparent) 0.6px, transparent 0.9px) 2px 1px / 7px 7px;
+}
+/* Steep's one display weight. Tracking is already negative and tightens with size, so it stays. */
+.display-xl { font-weight: 400; }
+.display { font-weight: 400; }
+.heading-1 { font-weight: 400; }
+.heading-2 { font-weight: 400; }

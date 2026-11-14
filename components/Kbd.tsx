@@ -3,7 +3,7 @@ import type { KeyboardEvent, ReactNode } from "react";
 /** One key or chord, in platform-neutral words ("Enter", "Shift + Enter"). */
 export function Kbd({ children }: { children: ReactNode }) {
   return (
-    <kbd className="label rounded-(--radius-sm) border border-hairline bg-paper-raised px-(--space-1) text-ink-soft">{children}</kbd>
+    <kbd className="label rounded-(--radius-control) border border-hairline bg-paper-raised px-(--space-1) text-ink-soft">{children}</kbd>
   );
 }
 

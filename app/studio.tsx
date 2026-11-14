@@ -368,7 +368,7 @@ export function Ledger({ log }: { log: Decision[] }) {
   if (!rows.length) return null;
   return (
     <section aria-labelledby="ledger-heading" className="flex flex-col gap-(--space-2)">
-      <h2 id="ledger-heading" className="label uppercase text-ink-muted">Your answers, as given</h2>
+      <h2 id="ledger-heading" className="label text-ink-muted">Your answers, as given</h2>
       <ol>
         {rows.map((r, i) => (
           <li key={i} className="border-b border-hairline py-(--space-2) last:border-b-0">
@@ -395,7 +395,7 @@ export function Composer({ session, busy, text, setText, onAnswer, onResolve }: 
   return (
     <form onSubmit={(e) => { e.preventDefault(); onAnswer(text); }} className="flex flex-col gap-(--space-3)">
       <div className="flex flex-col gap-(--space-1)">
-        <p className="label uppercase text-ink-muted">Question {n}</p>
+        <p className="label text-ink-muted">Question {n}</p>
         <h2 className="heading-2 text-ink">{q.ask}</h2>
       </div>
       {q.chips.length > 0 && (
@@ -475,7 +475,7 @@ export function SpecPanel({ session, busy, onEdit }: { session?: Session; busy: 
   return (
     <>
       <section className="flex flex-col gap-(--space-2)">
-        <h2 className="label uppercase text-ink-muted">Spec so far</h2>
+        <h2 className="label text-ink-muted">Spec so far</h2>
         <dl>
           {SLOT_KEYS.map((key) => {
             const slot = session?.slots.find((s) => s.key === key);
@@ -508,7 +508,7 @@ export function SpecPanel({ session, busy, onEdit }: { session?: Session; busy: 
       </section>
 
       <section className="flex flex-col gap-(--space-2)">
-        <h2 className="label uppercase text-ink-muted">Data sources</h2>
+        <h2 className="label text-ink-muted">Data sources</h2>
         {session?.sources.length ? (
           <ul>{session.sources.map((s) => <SourceItem key={s.name} src={s} />)}</ul>
         ) : (

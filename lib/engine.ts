@@ -6,7 +6,9 @@ import { randomUUID } from "node:crypto";
 import { ReviewActionSchema, type ClientAction, type ReviewResponse } from "./api";
 import { buildBlueprint } from "./blueprint";
 import { allowed, blocked, reduce, type Action } from "./journey";
-import { editFlags, gate } from "./dataRules";
+import { runChecks } from "./checks";
+import { editFlags, gate, scanText } from "./dataRules";
+import { knowledgeText } from "./offline";
 import { interviewTurn } from "./interviewer";
 import { loadKnowledge } from "./knowledge";
 import { provider } from "./llm";
@@ -119,6 +121,17 @@ async function runTestsFor(s: Session): Promise<EngineResult> {
   }
 }
 
+/**
+ * A requester rewrite passes two gates before the reducer accepts it: the data gate (no slot,
+ * so it fails closed) and the rewritten test's own deterministic checks.
+ */
+function rewriteAction(s: Session, testId: number, value: string, at: string): Action {
+  const t = s.tests?.find((x) => x.id === testId);
+  const checks = t ? runChecks(t.checks, value, { knowledge: knowledgeText(), prompt: t.prompt }) : undefined;
+  const checkFail = checks?.results.find((r) => !r.pass)?.reason;
+  return { type: "REWRITE_ANSWER", testId, value, flagged: scanText(value), ...(checkFail ? { checkFail } : {}), at };
+}
+
 export async function act(id: string, a: ClientAction): Promise<EngineResult | undefined> {
   const s = getSession(id);
   if (!s) return undefined;
@@ -135,6 +148,8 @@ export async function act(id: string, a: ClientAction): Promise<EngineResult | u
     : a.type === "continue" ? { type: "CONTINUE_TO_BLUEPRINT", at }
     : a.type === "reopen_scope" ? { type: "REOPEN_SCOPE", at }
     : a.type === "submit" ? { type: "SUBMIT_FOR_REVIEW", reviewId: randomUUID(), at }
+    : a.type === "rewrite_answer" ? rewriteAction(s, a.testId, a.value, at)
+    : a.type === "accept_failure" ? { type: "ACCEPT_FAILURE", testId: a.testId, role: a.role, note: a.note, flagged: scanText(a.note), at }
     : undefined;
 
   const next = action ? reduce(s, action) : s;

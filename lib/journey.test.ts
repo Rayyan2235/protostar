@@ -224,7 +224,8 @@ const line = (d: Decision) => ({ who: d.who, what: d.what, kind: d.kind });
 const blockedLines = (s: Session) => s.log.filter((d) => d.kind === "blocked").length;
 
 test("allowed actions per step: tests, blueprint, review, done", () => {
-  assert.deepEqual(allowed(atTests()), ["TESTS_RUN", "TESTS_FAILED", "CONTINUE_TO_BLUEPRINT", "REOPEN_SCOPE", "RESET"]);
+  assert.deepEqual(allowed(atTests()),
+    ["TESTS_RUN", "TESTS_FAILED", "REWRITE_ANSWER", "ACCEPT_FAILURE", "CONTINUE_TO_BLUEPRINT", "REOPEN_SCOPE", "RESET"]);
   assert.deepEqual(allowed(atBlueprint()), ["EDIT_SLOT", "REOPEN_SCOPE", "SUBMIT_FOR_REVIEW", "TESTS_RUN", "TESTS_FAILED", "RESET"]);
   const review = submit(atBlueprint());
   assert.deepEqual(allowed(review), ["REVIEW_OPENED", "REVIEW_DECISION"]);

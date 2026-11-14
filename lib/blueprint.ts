@@ -9,12 +9,14 @@
 import { scanText } from "./dataRules";
 import { SCENARIO } from "./scenario";
 import { PRICE_SOURCE, PRICES_AS_OF, priceFor, scopeByKey } from "./scoper";
+import { OFFLINE_SOURCE } from "./schemas";
+import { NOT_RUN_NOTE, summarize } from "./testSummary";
 import {
   SLOT_KEYS, SLOT_LABELS,
   type Blueprint, type BlueprintSlot, type DataVerdict, type KnowledgeRef, type Level, type Session, type SlotKey, type TestsSummary,
 } from "./types";
 
-export const TESTS_NOT_RUN: TestsSummary = { status: "not-run", note: "Not run yet: the test run needs live models." };
+export const TESTS_NOT_RUN: TestsSummary = { status: "not-run", note: NOT_RUN_NOTE };
 
 const TITLE_MAX = 80;
 
@@ -108,8 +110,11 @@ export function buildBlueprint(
       ...(s.estimate ? { estimate: s.estimate } : {}),
     },
     knowledge,
-    instructions: { text: draftInstructions(s, knowledge), draftedBy: "template" },
-    tests: { ...TESTS_NOT_RUN },
+    // The offline draft is the template text, so it says "template"; a model draft says "model".
+    instructions: s.draft
+      ? { text: s.draft.instructions, draftedBy: s.draft.source === OFFLINE_SOURCE ? "template" : "model", source: s.draft.source }
+      : { text: draftInstructions(s, knowledge), draftedBy: "template" },
+    tests: summarize(s),
     log: s.log,
     costNote: `Estimate from ${PRICE_SOURCE}, as of ${PRICES_AS_OF}. Not a quote.`,
   };

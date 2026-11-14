@@ -9,6 +9,9 @@ export const NOT_RUN_NOTE = "Not run yet.";
 export const OFFLINE_LABEL = "Offline script, not a model run";
 export const MODEL_LABEL = "Model run";
 
+/** The one text for a run older than the latest edits (contract 9.5): the log, the blueprint and the reviewer page. */
+export const staleNote = (version: number) => `Tests out of date: run before v${version}`;
+
 /** Headline order: capable first, then cheap (ADR 0014 §7). */
 const HEADLINE_ORDER: Role2[] = ["capable", "cheap"];
 const ROLE_NAME: Record<Role2, string> = { capable: "Capable", cheap: "Cheap" };

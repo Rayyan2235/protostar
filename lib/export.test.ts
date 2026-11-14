@@ -43,7 +43,7 @@ const blueprint: Blueprint = {
   },
   knowledge: [{ title: "Finance, B.S.", url: "https://bulletins.psu.edu/finance", fetchedAt: "2026-11-03", level: 1 }],
   instructions: { text: "You help sophomores.\nYou must never: Promise admission.", draftedBy: "template" },
-  tests: { status: "not-run", note: "Not run yet: the test run needs live models." },
+  tests: { status: "not-run", note: "Not run yet." },
   log: [
     { at, who: "requester", what: "Something that helps students", kind: "idea" },
     { at, who: "reviewer", what: "Opened blueprint v1.", kind: "review" },
@@ -140,4 +140,51 @@ test("instructions with backticks stay inside a longer fence", () => {
 test("plain instructions keep a three-backtick fence", () => {
   const lines = blueprintMarkdown(blueprint).split("\n");
   assert.ok(lines.includes("```text"));
+});
+
+// --- Phase 2b (BE-11): the run summary with its source label ---------------------------------
+
+const ran: Blueprint = {
+  ...blueprint,
+  instructions: { text: "You help sophomores.", draftedBy: "template", source: "offline-script" },
+  tests: {
+    status: "run", runId: "run-1", at, offline: true, label: "Offline script, not a model run",
+    headline: "Capable passed all 13. Cheap failed 1: doesn't state the 3.50 minimum from the bulletin.",
+    columns: [
+      { role: "cheap", source: "offline-script", passed: 12, total: 13, unavailable: false },
+      { role: "capable", source: "offline-script", passed: 13, total: 13, unavailable: false },
+    ],
+    failures: [{
+      testId: 1, prompt: "What GPA do I need to switch into Finance?", role: "cheap", source: "offline-script", by: "check",
+      reason: "Doesn't state the 3.50 minimum from the bulletin.", accepted: "Students see the GPA on the next screen.",
+    }],
+    stale: true,
+  },
+};
+
+test("Markdown tests section: label, headline, columns, failures with accepted notes, and the stale note", () => {
+  const md = blueprintMarkdown(ran);
+  const section = md.slice(md.indexOf("## Tests"), md.indexOf("## Decision log"));
+  for (const part of [
+    "_Offline script, not a model run. Run 2026-11-11T09:00:00.000Z._",
+    "**Tests out of date: run before v1.**",
+    "Capable passed all 13. Cheap failed 1: doesn't state the 3.50 minimum from the bulletin.",
+    "| Cheap | offline-script | 12/13 |",
+    "| Capable | offline-script | 13/13 |",
+    "- Test 1, Cheap (offline-script, check): What GPA do I need to switch into Finance? Doesn't state the 3.50 minimum from the bulletin. Accepted: Students see the GPA on the next screen.",
+  ]) assert.ok(section.includes(part), `missing: ${part}\n${section}`);
+  assert.ok(md.includes("_Template, not model-drafted. Source: offline-script._"));
+});
+
+test("Markdown marks an unavailable column; a fresh run has no stale note", () => {
+  const t = ran.tests.status === "run" ? ran.tests : undefined!;
+  const md = blueprintMarkdown({ ...ran, tests: { ...t, stale: false, columns: [t.columns[0], { ...t.columns[1], passed: 0, unavailable: true }] } });
+  assert.ok(md.includes("| Capable | offline-script | unavailable |"));
+  assert.ok(!md.includes("Tests out of date"));
+});
+
+test("JSON carries the run summary and its label", () => {
+  const json = JSON.parse(blueprintJson(ran));
+  assert.equal(json.tests.label, "Offline script, not a model run");
+  assert.equal(json.tests.failures[0].accepted, "Students see the GPA on the next screen.");
 });

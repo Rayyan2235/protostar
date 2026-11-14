@@ -235,7 +235,7 @@ test("continue moves tests to blueprint and says tests were not run", () => {
   const s = atBlueprint();
   assert.equal(s.step, "blueprint");
   assert.deepEqual(line(last(s)),
-    { who: "requester", what: "Continued to the blueprint. Tests not run: the test run needs live models.", kind: "blueprint" });
+    { who: "requester", what: "Continued to the blueprint. Tests not run.", kind: "blueprint" });
 });
 
 test("continue is blocked during the interview", () => {
@@ -472,4 +472,87 @@ test("EDIT_SLOT at the blueprint without a run doesn't set testsStale; a refused
   const withRun = reduce(reduce(atTests(), ran), { type: "CONTINUE_TO_BLUEPRINT", at });
   const refused = reduce(withRun, edit("never", "Paste the degree audit", [audit]));
   assert.deepEqual([refused.draft, refused.tests, refused.testsStale], [withRun.draft, withRun.tests, withRun.testsStale]);
+});
+
+// --- Phase 2b: rewrite, accept, continue, stale submit (BE-11, contract 9.5) ----------------
+
+const rewrite = (testId: number, value: string, extra: { flagged?: Source[]; checkFail?: string } = {}): Action =>
+  ({ type: "REWRITE_ANSWER", testId, value, flagged: extra.flagged ?? [], ...(extra.checkFail ? { checkFail: extra.checkFail } : {}), at });
+const accept = (testId: number, role: "cheap" | "capable", note: string, flagged: Source[] = []): Action =>
+  ({ type: "ACCEPT_FAILURE", testId, role, note, flagged, at });
+const afterRun = () => reduce(atTests(), ran);
+
+test("REWRITE_ANSWER adds a requester test with the same prompt, rubric and checks, clears the draft and marks stale", () => {
+  const s = reduce(afterRun(), rewrite(1, "Finance needs a 3.50 GPA; talk to an advisor."));
+  assert.equal(s.tests?.length, 4);
+  assert.deepEqual(s.tests?.at(-1), {
+    id: 4, prompt: "Question 1?", mustInclude: [], mustNot: [], from: "requester", checks: ["no-admission-promise"],
+    reference: "Finance needs a 3.50 GPA; talk to an advisor.",
+  });
+  assert.equal(s.draft, undefined);
+  assert.equal(s.testsStale, true);
+  assert.deepEqual(line(last(s)), { who: "requester", kind: "tests", what: "Rewrote the answer to test 1: Finance needs a 3.50 GPA; talk to an advisor." });
+});
+
+test("a second rewrite of the same prompt replaces the first, same id", () => {
+  const s = reduce(reduce(afterRun(), rewrite(1, "First.")), rewrite(1, "Second."));
+  assert.equal(s.tests?.length, 4);
+  assert.deepEqual([s.tests?.at(-1)?.id, s.tests?.at(-1)?.reference], [4, "Second."]);
+});
+
+test("REWRITE_ANSWER is refused on record data or a failed check, with a blocked line and nothing else changed", () => {
+  const s = afterRun();
+  const flagged = reduce(s, rewrite(1, "Paste your degree audit", { flagged: [audit] }));
+  assert.deepEqual({ ...flagged, log: s.log }, s);
+  assert.equal(last(flagged).kind, "blocked");
+  assert.match(last(flagged).what, /^Rewrites can't include Level 3–4 data: Students paste their degree audit\./);
+  const failed = reduce(s, rewrite(1, "You're guaranteed admission.", { checkFail: "Promises an outcome: \"You're guaranteed admission.\"" }));
+  assert.deepEqual({ ...failed, log: s.log }, s);
+  assert.equal(last(failed).what, "Rewrite refused: Promises an outcome: \"You're guaranteed admission.\"");
+});
+
+test("REWRITE_ANSWER needs a check or judge failure on that test in the latest run", () => {
+  const s = afterRun();
+  const passed = reduce(s, rewrite(2, "Fine."));
+  assert.equal(passed.tests?.length, 3);
+  assert.equal(last(passed).what, "Blocked: test 2 has no failed answer to rewrite in the latest run.");
+  const errored = reduce({ ...s, run: { ...runRef, failures: [{ ...runRef.failures[0], by: "answer-error" }] } }, rewrite(1, "Fine."));
+  assert.equal(errored.tests?.length, 3);
+  assert.equal(last(errored).kind, "blocked");
+  assert.equal(last(reduce(atTests(), rewrite(1, "Fine."))).kind, "blocked", "no run yet");
+  const atBp = reduce(afterRun(), { type: "CONTINUE_TO_BLUEPRINT", at });
+  assert.match(last(reduce(atBp, rewrite(1, "Fine."))).what, /^Blocked: "REWRITE_ANSWER"/);
+});
+
+test("ACCEPT_FAILURE records the note for the latest run and logs the source", () => {
+  const s = reduce(afterRun(), accept(1, "cheap", "Students see the GPA on the next screen."));
+  assert.deepEqual(s.accepted, [{ runId: "run-1", testId: 1, role: "cheap", note: "Students see the GPA on the next screen.", at }]);
+  assert.deepEqual(line(last(s)), { who: "requester", kind: "tests", what: "Accepted a failure on test 1 (offline-script): Students see the GPA on the next screen." });
+});
+
+test("ACCEPT_FAILURE needs a note, no record data and a failure for that test and column", () => {
+  const s = afterRun();
+  const empty = reduce(s, accept(1, "cheap", "  "));
+  assert.equal(empty.accepted, undefined);
+  assert.equal(last(empty).what, "Accepting a failure needs a note.");
+  const flagged = reduce(s, accept(1, "cheap", "See their transcript", [audit]));
+  assert.equal(flagged.accepted, undefined);
+  assert.match(last(flagged).what, /^Notes can't include Level 3–4 data/);
+  const notFailed = reduce(s, accept(1, "capable", "Fine."));
+  assert.equal(notFailed.accepted, undefined);
+  assert.equal(last(notFailed).what, "Blocked: test 1 didn't fail on capable in the latest run.");
+});
+
+test("CONTINUE_TO_BLUEPRINT names the run's headline when there is one", () => {
+  const s = reduce(afterRun(), { type: "CONTINUE_TO_BLUEPRINT", at });
+  assert.deepEqual(line(last(s)), { who: "requester", kind: "blueprint", what: `Continued to the blueprint. Tests: ${runRef.headline}` });
+});
+
+test("a submit with stale tests goes through and says so; without a stale run the line is unchanged", () => {
+  const stale = reduce(reduce(afterRun(), { type: "CONTINUE_TO_BLUEPRINT", at }), edit("never", "Promise admission or quote fees"));
+  assert.equal(stale.testsStale, true);
+  const s = submit(stale);
+  assert.equal(s.step, "review");
+  assert.equal(last(s).what, "Submitted blueprint v1 for review. Tests out of date: run before v1.");
+  assert.equal(last(submit(reduce(afterRun(), { type: "CONTINUE_TO_BLUEPRINT", at }))).what, "Submitted blueprint v1 for review.");
 });

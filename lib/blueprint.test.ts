@@ -4,6 +4,7 @@ import { buildBlueprint, dataVerdict, draftInstructions, TESTS_NOT_RUN } from ".
 import { initial, reduce, type Action } from "./journey";
 import { SCENARIO } from "./scenario";
 import { estimate, priceFor, PRICE_SOURCE, PRICES_AS_OF } from "./scoper";
+import { summarize } from "./testSummary";
 import { SLOT_KEYS, SLOT_LABELS, type KnowledgeRef, type Session, type SlotKey, type Source } from "./types";
 
 const at = "2026-11-11T09:00:00.000Z";
@@ -142,7 +143,7 @@ test("a model with no list price: deployment name shown, no estimate", () => {
 
 test("tests are honestly not run; cost note names the price source", () => {
   const b = bp();
-  assert.deepEqual(TESTS_NOT_RUN, { status: "not-run", note: "Not run yet: the test run needs live models." });
+  assert.deepEqual(TESTS_NOT_RUN, { status: "not-run", note: "Not run yet." });
   assert.deepEqual(b.tests, TESTS_NOT_RUN);
   assert.equal(b.costNote, `Estimate from Anthropic public list prices (same rates on Microsoft Foundry), as of ${PRICES_AS_OF}. Not a quote.`);
   assert.ok(b.costNote.includes(PRICE_SOURCE));
@@ -178,4 +179,34 @@ test("draft instructions are a template built only from Dana's words, the rule a
   assert.ok(text.split(/\r?\n/).includes(`Must never (from the requester): ${ANSWERS.never}.`), text);
   assert.doesNotMatch(text, /You must never/);
   assert.deepEqual(bp(s).instructions, { text, draftedBy: "template" });
+});
+
+// --- Phase 2b (BE-11): the blueprint shows the run and the drafted instructions ---------------
+
+const runRef = (offline = true): NonNullable<Session["run"]> => ({
+  id: "run-1", at, offline,
+  columns: [
+    { role: "cheap", source: offline ? "offline-script" : "claude-haiku-4-5", passed: 12, total: 13, unavailable: false },
+    { role: "capable", source: offline ? "offline-script" : "claude-sonnet-5", passed: 13, total: 13, unavailable: false },
+  ],
+  failures: [{ testId: 1, prompt: "What GPA do I need?", role: "cheap", by: "check", reason: "Doesn't state the 3.50 minimum from the bulletin." }],
+  evidence: false,
+  headline: "Capable passed all 13. Cheap failed 1: doesn't state the 3.50 minimum from the bulletin.",
+});
+
+test("with a run, the blueprint's tests are summarize(s), stale when testsStale", () => {
+  const s: Session = { ...dana(), run: runRef() };
+  assert.deepEqual(bp(s).tests, summarize(s));
+  const t = bp(s).tests;
+  assert.ok(t.status === "run" && t.label === "Offline script, not a model run" && !t.stale);
+  const stale = bp({ ...s, testsStale: true }).tests;
+  assert.ok(stale.status === "run" && stale.stale);
+});
+
+test("a drafted session shows the draft's instructions with its source; offline counts as the template", () => {
+  const s = dana();
+  const offline = bp({ ...s, draft: { instructions: "Offline draft.", source: "offline-script", at, examples: [] } }).instructions;
+  assert.deepEqual(offline, { text: "Offline draft.", draftedBy: "template", source: "offline-script" });
+  const model = bp({ ...s, draft: { instructions: "Model draft.", source: "claude-sonnet-5", at, examples: [] } }).instructions;
+  assert.deepEqual(model, { text: "Model draft.", draftedBy: "model", source: "claude-sonnet-5" });
 });

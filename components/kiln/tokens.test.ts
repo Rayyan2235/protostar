@@ -103,3 +103,23 @@ test("app/tokens.css exists and is imported once, by app/globals.css", () => {
   const importers = scanned().filter((f) => /@import\s+["']\.\/tokens\.css["']/.test(readFileSync(join(ROOT, f), "utf8")));
   assert.deepEqual(importers, ["app/globals.css"]);
 });
+
+/** Every app/ and components/ source file (tests and docs excluded), tokens.css included. */
+function allSources(): string[] {
+  return [...scanned(), TOKENS_FILE];
+}
+
+test("K6a: no uppercase labels anywhere in app/** or components/** (Intercom drops caps)", () => {
+  const hits = scanned().filter((f) => /(?<![\w-])uppercase(?![\w-])|text-transform:\s*uppercase/.test(readFileSync(join(ROOT, f), "utf8")));
+  assert.deepEqual(hits, []);
+});
+
+test("K6a: no shadow utilities and no box-shadow outside tokens.css; the @theme shadow mapping is gone", () => {
+  const hits = allSources().filter((f) => f !== TOKENS_FILE).filter((f) => {
+    const src = readFileSync(join(ROOT, f), "utf8");
+    return /(?<![\w-])shadow-[a-z]/.test(src) || /box-shadow/.test(src);
+  });
+  assert.deepEqual(hits, []);
+  const css = readFileSync(join(ROOT, "app/globals.css"), "utf8");
+  assert.doesNotMatch(css, /--shadow-[\w-]+:\s*var\(/);
+});

@@ -12,7 +12,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const BROWSER_SAFE = [
-  "types.ts", "scenario.ts", "api.ts", "scoper.ts", "journey.ts", "dataRules.ts", "blueprint.ts", "export.ts",
+  "types.ts", "scenario.ts", "api.ts", "schemas.ts", "testRun.fake.ts", "scoper.ts", "journey.ts", "dataRules.ts", "blueprint.ts", "export.ts", "testSummary.ts",
 ];
 const ALLOWED = new Set(["zod", ...BROWSER_SAFE.map((f) => `./${f.replace(/\.ts$/, "")}`)]);
 

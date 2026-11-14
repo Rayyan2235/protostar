@@ -10,10 +10,12 @@
  * when the interview ends, and when the data gate blocks.
  */
 import type {
-  Decision, DecisionKind, InterviewTurn, Level, Pushback, PushbackChoice, Question, ReviewDecision, Session, Slot, SlotKey, Source, Step, Who,
+  Decision, DecisionKind, Draft, InterviewTurn, Level, Pushback, PushbackChoice, Question, ReviewDecision, Role2, RunRef, Session, Slot, SlotKey,
+  Source, Step, Test, Who,
 } from "./types";
 import { SLOT_KEYS } from "./types";
 import { SCENARIO } from "./scenario";
+import { staleNote } from "./testSummary";
 import { cleanKnobs, estimate, formatDollars, scopeByKey, type Knobs, type ModelRole, type Price, type ScopeKey } from "./scoper";
 
 export const STEPS: Step[] = ["idea", "interview", "scope", "tests", "blueprint", "review", "done"];
@@ -52,6 +54,12 @@ export type Action =
   | { type: "SUBMIT_FOR_REVIEW"; reviewId: string; at: string }
   | { type: "REVIEW_OPENED"; version: number; at: string }
   | { type: "REVIEW_DECISION"; version: number; status: ReviewDecision; note?: string; at: string }
+  // Phase 2b (contract 9.5). TESTS_RUN / TESTS_FAILED from BE-10; REWRITE_ANSWER / ACCEPT_FAILURE come in BE-11.
+  | { type: "TESTS_RUN"; run: RunRef; draft: Draft; tests: Test[]; at: string }
+  | { type: "TESTS_FAILED"; message: string; at: string }
+  /** The engine fills flagged (scanText(value)) and checkFail (the test's own checks). */
+  | { type: "REWRITE_ANSWER"; testId: number; value: string; flagged: Source[]; checkFail?: string; at: string }
+  | { type: "ACCEPT_FAILURE"; testId: number; role: Role2; note: string; flagged: Source[]; at: string }
   | { type: "RESET"; at: string };
 
 export function initial(id: string, at: string): Session {
@@ -79,9 +87,9 @@ export function allowed(s: Session): Action["type"][] {
     case "scope":
       return ["CHOOSE_SCOPE", ...reset];
     case "tests":
-      return ["CONTINUE_TO_BLUEPRINT", "REOPEN_SCOPE", ...reset]; // Phase 2b adds its run action here
+      return ["TESTS_RUN", "TESTS_FAILED", "REWRITE_ANSWER", "ACCEPT_FAILURE", "CONTINUE_TO_BLUEPRINT", "REOPEN_SCOPE", ...reset];
     case "blueprint":
-      return ["EDIT_SLOT", "REOPEN_SCOPE", "SUBMIT_FOR_REVIEW", ...reset];
+      return ["EDIT_SLOT", "REOPEN_SCOPE", "SUBMIT_FOR_REVIEW", "TESTS_RUN", "TESTS_FAILED", ...reset];
     case "review":
       return ["REVIEW_OPENED", "REVIEW_DECISION"];
     case "done":
@@ -155,10 +163,31 @@ function maybeFinish(s: Session, at: string): Session {
   return s;
 }
 
-export function reduce(s: Session, a: Action): Session {
-  if (!allowed(s).includes(a.type)) {
-    return { ...s, log: say(s, a.at, "tool", `Blocked: "${a.type}" isn't possible at this step.`, "blocked") };
+/** The session unchanged plus a [tool] blocked line. The engine uses it when it can't even build the action. */
+export function blocked(s: Session, type: Action["type"], at: string): Session {
+  return { ...s, log: say(s, at, "tool", `Blocked: "${type}" isn't possible at this step.`, "blocked") };
+}
+
+/**
+ * Drops the draft and the generated tests; requester tests survive (contract 9.5). With
+ * `dropRun`, the run and testsStale go too. Keys are removed, not set to undefined, so a
+ * saved session reads back equal.
+ */
+function clearDrafted(s: Session, dropRun: boolean): Session {
+  const next: Session = { ...s };
+  delete next.draft;
+  const mine = s.tests?.filter((t) => t.from === "requester");
+  if (mine?.length) next.tests = mine;
+  else delete next.tests;
+  if (dropRun) {
+    delete next.run;
+    delete next.testsStale;
   }
+  return next;
+}
+
+export function reduce(s: Session, a: Action): Session {
+  if (!allowed(s).includes(a.type)) return blocked(s, a.type, a.at);
 
   switch (a.type) {
     case "SUBMIT_IDEA": {
@@ -235,7 +264,9 @@ export function reduce(s: Session, a: Action): Session {
         log: say(s, a.at, "requester", `Edited ${a.key}: ${value}`, "edit"),
       };
       // Only the interview can finish; at the blueprint an edit would otherwise jump to scope.
-      return s.step === "interview" ? maybeFinish(next, a.at) : next;
+      if (s.step === "interview") return maybeFinish(next, a.at);
+      // At the blueprint the next run re-drafts from the edit; an existing run stays, shown stale.
+      return { ...clearDrafted(next, false), ...(s.run ? { testsStale: true } : {}) };
     }
 
     case "RESOLVE_PUSHBACK": {
@@ -268,15 +299,74 @@ export function reduce(s: Session, a: Action): Session {
         ? `est. ${formatDollars(est.monthlyDollars)}/month for ${knobs.studentsPerMonth.toLocaleString("en-US")} students × ${knobs.convsPerStudent} conversations (list prices ${est.pricesAsOf})`
         : "no price on file for this model, so no estimate";
       return {
-        ...s, step: "tests", scope: a.scope, knobs, model: { role: a.role, name: a.model }, estimate: est,
+        ...clearDrafted(s, true), step: "tests", scope: a.scope, knobs, model: { role: a.role, name: a.model }, estimate: est,
         log: say(s, a.at, "requester", `Scope: ${sc.label} (risk ${sc.risk}) on ${a.price?.name ?? a.model}; ${cost}.`, "scope"),
+      };
+    }
+
+    case "TESTS_RUN": {
+      const [cheap, capable] = (["cheap", "capable"] as const).map((r) => a.run.columns.find((c) => c.role === r)?.source ?? r);
+      return {
+        ...s, run: a.run, draft: a.draft, tests: a.tests, testsStale: false,
+        log: say(s, a.at, "tool",
+          `Ran ${a.tests.length} tests on ${cheap} and ${capable}${a.run.offline ? " (offline script)" : ""}: ${a.run.headline}`, "tests"),
+      };
+    }
+
+    case "TESTS_FAILED":
+      return { ...s, log: say(s, a.at, "tool", `Test run failed: ${a.message}`, "tests") };
+
+    case "REWRITE_ANSWER": {
+      const no = (what: string) => ({ ...s, log: say(s, a.at, "tool", what, "blocked") });
+      if (a.flagged.length) {
+        return no(`Rewrites can't include Level 3–4 data: ${a.flagged.map((f) => f.name).join(", ")}. ${SCENARIO.pushback.limit}`);
+      }
+      if (a.checkFail) return no(`Rewrite refused: ${a.checkFail}`);
+      const value = a.value.trim();
+      const target = s.tests?.find((t) => t.id === a.testId);
+      const failedHere = s.run?.failures.some((f) => f.testId === a.testId && (f.by === "check" || f.by === "judge"));
+      if (!value || !target || !failedHere) return no(`Blocked: test ${a.testId} has no failed answer to rewrite in the latest run.`);
+      const tests = s.tests ?? [];
+      const same = tests.find((t) => t.from === "requester" && t.prompt === target.prompt);
+      const mine: Test = {
+        id: same?.id ?? Math.max(0, ...tests.map((t) => t.id)) + 1,
+        prompt: target.prompt, mustInclude: target.mustInclude, mustNot: target.mustNot,
+        from: "requester", checks: target.checks, reference: value,
+      };
+      const next: Session = {
+        ...s,
+        tests: same ? tests.map((t) => (t.id === same.id ? mine : t)) : [...tests, mine],
+        testsStale: true,
+        log: say(s, a.at, "requester", `Rewrote the answer to test ${a.testId}: ${value}`, "tests"),
+      };
+      delete next.draft; // the next run re-drafts with this example
+      return next;
+    }
+
+    case "ACCEPT_FAILURE": {
+      const no = (what: string) => ({ ...s, log: say(s, a.at, "tool", what, "blocked") });
+      const note = a.note.trim();
+      if (!note) return no("Accepting a failure needs a note.");
+      if (a.flagged.length) {
+        return no(`Notes can't include Level 3–4 data: ${a.flagged.map((f) => f.name).join(", ")}. ${SCENARIO.pushback.limit}`);
+      }
+      const run = s.run;
+      if (!run?.failures.some((f) => f.testId === a.testId && f.role === a.role)) {
+        return no(`Blocked: test ${a.testId} didn't fail on ${a.role} in the latest run.`);
+      }
+      const source = run.columns.find((c) => c.role === a.role)?.source ?? a.role;
+      return {
+        ...s,
+        accepted: [...(s.accepted ?? []), { runId: run.id, testId: a.testId, role: a.role, note, at: a.at }],
+        log: say(s, a.at, "requester", `Accepted a failure on test ${a.testId} (${source}): ${note}`, "tests"),
       };
     }
 
     case "CONTINUE_TO_BLUEPRINT":
       return {
         ...s, step: "blueprint",
-        log: say(s, a.at, "requester", "Continued to the blueprint. Tests not run: the test run needs live models.", "blueprint"),
+        log: say(s, a.at, "requester",
+          s.run ? `Continued to the blueprint. Tests: ${s.run.headline}` : "Continued to the blueprint. Tests not run.", "blueprint"),
       };
 
     case "REOPEN_SCOPE": // scope, model, knobs and estimate stay until re-chosen
@@ -287,7 +377,9 @@ export function reduce(s: Session, a: Action): Session {
       return {
         ...s, step: "review",
         review: { reviewId: s.review?.reviewId ?? a.reviewId, version, status: "pending", submittedAt: a.at },
-        log: say(s, a.at, "requester", `Submitted blueprint v${version} for review.`, "submit"),
+        // A stale run doesn't block the submit (Lead 2026-11-12): the reviewer decides, with the fact in front of them.
+        log: say(s, a.at, "requester",
+          `Submitted blueprint v${version} for review.${s.testsStale && s.run ? ` ${staleNote(version)}.` : ""}`, "submit"),
       };
     }
 

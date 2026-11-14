@@ -24,6 +24,10 @@ export const ClientActionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("submit") }),         // blueprint -> review
   z.object({ type: z.literal("retry") }),
   z.object({ type: z.literal("reset") }),
+  // Phase 2b (contract 9.4). The engine handles them from BE-10/BE-11.
+  z.object({ type: z.literal("run_tests") }),
+  z.object({ type: z.literal("rewrite_answer"), testId: z.number().int().positive(), value: text }),
+  z.object({ type: z.literal("accept_failure"), testId: z.number().int().positive(), role: z.enum(["cheap", "capable"]), note: text }),
 ]);
 export type ClientAction = z.infer<typeof ClientActionSchema>;
 

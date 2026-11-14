@@ -308,7 +308,8 @@ export function BlueprintStep({ session, blueprint, busy, error, send, onNewIdea
       {blueprint ? (
         <div className="flex flex-col gap-(--space-4)">
           <BlueprintView blueprint={blueprint} audience="requester" status={status} />
-          <ExportBar blueprint={blueprint} />
+          {/* The live draft has the ExportBar in its Export tab; a submitted blueprint keeps it under the sheet. */}
+          {!blueprint.draft && <ExportBar blueprint={blueprint} />}
         </div>
       ) : (
         <p className="small font-normal text-ink-muted">Loading the blueprint…</p>

@@ -4,9 +4,9 @@ import type { Decision } from "@/lib/types";
  * Who decided what, oldest first, folded away by default. Each row names its decider in a mono
  * label (the word carries the meaning; colour only echoes it).
  */
-export function DecisionLog({ log }: { log: Decision[] }) {
+export function DecisionLog({ log, open }: { log: Decision[]; /** Unfolded, e.g. as the only content of a tab. */ open?: boolean }) {
   return (
-    <details>
+    <details open={open}>
       <summary className="label cursor-pointer text-ink-muted focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-accent">
         Decision log ({log.length})
       </summary>

@@ -11,6 +11,8 @@ import { SpecSheet } from "@/components/kiln/SpecSheet";
 import { Tag } from "@/components/kiln/Tag";
 import { DecisionLog } from "@/components/DecisionLog";
 import { Figure } from "@/components/Figure";
+import { FoldedSheet } from "@/components/FoldedSheet";
+import { SectionTabs } from "@/components/SectionTabs";
 import { Notice } from "@/components/Notice";
 
 type Audience = "requester" | "reviewer";
@@ -72,7 +74,11 @@ function SpecRow({ slot, audience }: { slot: BlueprintSlot; audience: Audience }
   );
 }
 
-/** The one-page blueprint: what the requester submits and the reviewer approves. Read-only. */
+/**
+ * The one-page blueprint: what the requester submits and the reviewer approves. Read-only.
+ * The requester's live draft is split into SectionTabs (K6b); a submitted blueprint shows in one
+ * scroll on a FoldedSheet, because the reviewer approves the whole page.
+ */
 export function BlueprintView({ blueprint: bp, audience, status }: {
   blueprint: Blueprint;
   audience: Audience;
@@ -91,28 +97,29 @@ export function BlueprintView({ blueprint: bp, audience, status }: {
     </span>
   );
 
-  return (
-    <article className="flex flex-col gap-(--space-6)" aria-label={`Blueprint v${bp.version}`}>
-      <div className="flex flex-col gap-(--space-3)">
-        <SpecSheet
-          number={bp.draft ? "Draft" : `v${bp.version}`}
-          title={bp.title}
-          revision={bp.draft ? `becomes v${bp.version} on submit` : `rev. ${day(bp.builtAt)}`}
-          rows={[
-            { label: "Scope", value: `${scope.label} · ${scope.risk} risk` },
-            { label: "Model", value: scope.model },
-            { label: "Est. cost / month", value: cost },
-            { label: "Highest data level", value: `Level ${data.maxLevel} · ${data.allowed ? "allowed" : "blocked"}` },
-            { label: "Data choice", value: data.pushback ? data.pushback.title : "Nothing flagged" },
-            { label: "Tests", value: bp.tests.status === "not-run" ? "Not run yet" : String(bp.tests.status) },
-            { label: "Status", value: status ?? (bp.draft ? "Draft, not submitted" : "Submitted") },
-          ]}
-        />
-        <p className="body whitespace-pre-wrap text-ink-soft">
-          <span className="font-semibold text-ink">Purpose: </span>{bp.idea}
-        </p>
-      </div>
-
+  const header = (
+    <div className="flex flex-col gap-(--space-3)">
+      <SpecSheet
+        number={bp.draft ? "Draft" : `v${bp.version}`}
+        title={bp.title}
+        revision={bp.draft ? `becomes v${bp.version} on submit` : `rev. ${day(bp.builtAt)}`}
+        rows={[
+          { label: "Scope", value: `${scope.label} · ${scope.risk} risk` },
+          { label: "Model", value: scope.model },
+          { label: "Est. cost / month", value: cost },
+          { label: "Highest data level", value: `Level ${data.maxLevel} · ${data.allowed ? "allowed" : "blocked"}` },
+          { label: "Data choice", value: data.pushback ? data.pushback.title : "Nothing flagged" },
+          { label: "Tests", value: bp.tests.status === "not-run" ? "Not run yet" : String(bp.tests.status) },
+          { label: "Status", value: status ?? (bp.draft ? "Draft, not submitted" : "Submitted") },
+        ]}
+      />
+      <p className="body whitespace-pre-wrap text-ink-soft">
+        <span className="font-semibold text-ink">Purpose: </span>{bp.idea}
+      </p>
+    </div>
+  );
+  const summary = (
+    <>
       <Section title="Spec">
         <dl>
           {bp.spec.map((s) => <SpecRow key={s.key} slot={s} audience={audience} />)}
@@ -170,18 +177,48 @@ export function BlueprintView({ blueprint: bp, audience, status }: {
           <p className="small font-normal text-ink-muted">No knowledge pages.</p>
         )}
       </Section>
+    </>
+  );
+  const instructions = (
+    <Section title="Draft instructions" aside={<Tag>{bp.instructions.draftedBy === "template" ? "template" : "drafted by model"}</Tag>}>
+      <pre className="small max-h-[calc(var(--space-8)*2)] overflow-auto whitespace-pre-wrap rounded-(--radius-sm) bg-paper-sunk p-(--space-3) font-body font-normal text-ink">{bp.instructions.text}</pre>
+    </Section>
+  );
+  const testsSection = (
+    <Section title="Tests">
+      <p className="body text-ink-soft">{bp.tests.note}</p>
+    </Section>
+  );
 
-      <Section title="Draft instructions" aside={<Tag>{bp.instructions.draftedBy === "template" ? "template" : "drafted by model"}</Tag>}>
-        <pre className="small max-h-[calc(var(--space-8)*2)] overflow-auto whitespace-pre-wrap rounded-(--radius-sm) bg-paper-sunk p-(--space-3) font-body font-normal text-ink">{bp.instructions.text}</pre>
-      </Section>
+  if (bp.draft && audience === "requester") {
+    return (
+      <article className="flex flex-col gap-(--space-5)" aria-label={`Blueprint v${bp.version}`}>
+        {header}
+        <SectionTabs id="blueprint" label="Blueprint sections" tabs={[
+          { key: "summary", name: "Summary", panel: <div className="flex flex-col gap-(--space-6)">{summary}</div> },
+          { key: "tests", name: testsTabName(bp), panel: testsSection },
+          { key: "decisions", name: "Decisions", panel: <DecisionLog log={bp.log} open /> },
+          { key: "export", name: "Export", panel: <div className="flex flex-col gap-(--space-4)">{instructions}<ExportBar blueprint={bp} /></div> },
+        ]} />
+      </article>
+    );
+  }
 
-      <Section title="Tests">
-        <p className="body text-ink-soft">{bp.tests.note}</p>
-      </Section>
-
+  const sheet = (
+    <article className="flex flex-col gap-(--space-6)" aria-label={`Blueprint v${bp.version}`}>
+      {header}
+      {summary}
+      {instructions}
+      {testsSection}
       <DecisionLog log={bp.log} />
     </article>
   );
+  return bp.draft ? sheet : <FoldedSheet>{sheet}</FoldedSheet>;
+}
+
+/** The Tests tab carries the run's state in its name, so the tab's accessible name says it. */
+export function testsTabName(bp: Blueprint): string {
+  return bp.tests.status === "not-run" ? "Tests · not run" : "Tests";
 }
 
 function download(text: string, name: string, type: string) {

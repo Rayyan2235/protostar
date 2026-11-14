@@ -87,7 +87,9 @@ test("EmptyState: one big word as the heading, one sentence, exactly one action,
 test("Figure SSR shows the final value in tabular nums; the rolling digits are aria-hidden", () => {
   const html = renderToStaticMarkup(<Figure value={50.4} format={(n) => `$${n.toFixed(2)}`} />);
   assert.match(html, /tabular-nums/);
-  assert.match(html, /<span aria-hidden="true">\$50\.40<\/span>/);
+  // K6b: the aria-hidden copy is now digit columns (see k6b-figure.test.tsx); still hidden, still the final value.
+  assert.match(html, /<span aria-hidden="true"[^>]*data-roll/);
+  assert.deepEqual([...html.matchAll(/data-digit="(\d)"/g)].map((m) => m[1]).join(""), "5040");
   assert.match(html, /class="sr-only"[^>]*>\$50\.40</);
   assert.doesNotMatch(html, /aria-live/);
 });

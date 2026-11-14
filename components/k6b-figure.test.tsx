@@ -43,10 +43,10 @@ test("digitColumns: non-digits are static; an unchanged digit doesn't roll", () 
 });
 
 test("digitColumns: a column whose kind changes (digit <-> separator) gets a new key, so it mounts without a roll", () => {
-  const before = digitColumns("$999", "$999");
-  const after = digitColumns("$999", "$1,000");
+  const before = digitColumns("$9.50", "$9.50");
+  const after = digitColumns("$9.50", "$19.50");
   const k = (cols: typeof before, i: number) => cols[cols.length - 1 - i].key;
-  assert.notEqual(k(before, 3), k(after, 3), "offset 3 was $ and is now ,");
+  assert.notEqual(k(before, 4), k(after, 4), "offset 4 was $ and is now the digit 1");
   assert.equal(k(before, 0), k(after, 0));
 });
 
@@ -61,7 +61,7 @@ test("Figure SSR: digits are aria-hidden columns of 0-9; one sr-only copy carrie
   const html = renderToStaticMarkup(<Figure value={1000} format={dollars} />);
   const hidden = html.match(/<span aria-hidden="true"[^>]*data-roll[^>]*>([\s\S]*?)<\/span><span class="sr-only"/)?.[1] ?? "";
   assert.ok(hidden, "an aria-hidden roll before the sr-only copy");
-  assert.equal((hidden.match(/data-digit=/g) ?? []).length, 5, "1,000.00 has five digits");
+  assert.equal((hidden.match(/data-digit=/g) ?? []).length, 6, "1,000.00 has six digits");
   assert.match(plain(hidden), /0123456789/);
   assert.match(html, /class="sr-only"[^>]*>\$1,000\.00</);
   assert.match(html, /overflow-hidden/);

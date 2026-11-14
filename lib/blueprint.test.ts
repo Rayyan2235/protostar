@@ -199,7 +199,8 @@ function twoChoices(): Session {
 const withNote = (s: Session): Session =>
   ({ ...s, slots: s.slots.map((x) => (x.key === "handoff" ? { ...x, value: "Anything where they paste their degree audit" } : x)) });
 const oldStyle = (s: Session): Session => {
-  const { choices: _, ...pb } = s.pushback!;
+  const pb = { ...s.pushback! };
+  delete pb.choices;
   return { ...s, pushback: pb };
 };
 

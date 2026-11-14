@@ -7,11 +7,12 @@
  * data that the pushback already ruled on, it gets a note; the text is never rewritten.
  */
 import { scanText } from "./dataRules";
+import { chosen, choiceRules, ruleText } from "./pushback";
 import { SCENARIO } from "./scenario";
 import { PRICE_SOURCE, PRICES_AS_OF, priceFor, scopeByKey } from "./scoper";
 import {
   SLOT_KEYS, SLOT_LABELS,
-  type Blueprint, type BlueprintSlot, type DataVerdict, type KnowledgeRef, type Level, type Session, type SlotKey, type TestsSummary,
+  type Blueprint, type BlueprintSlot, type DataVerdict, type KnowledgeRef, type Level, type Pushback, type Session, type SlotKey, type TestsSummary,
 } from "./types";
 
 export const TESTS_NOT_RUN: TestsSummary = { status: "not-run", note: "Not run yet: the test run needs live models." };
@@ -32,37 +33,39 @@ export function dataVerdict(s: Session): DataVerdict {
   const allowed = maxLevel <= 2;
   const base = allowed ? "All sources are Level 1–2." : `A source is Level ${maxLevel}. ${SCENARIO.pushback.limit}`;
   const pb = s.pushback;
-  if (!pb?.choice) return { maxLevel, allowed, sources: s.sources, summary: base };
+  const rules = choiceRules(pb);
+  if (!pb?.choice || !rules.length) return { maxLevel, allowed, sources: s.sources, summary: base };
 
-  const option = SCENARIO.pushback.options[pb.choice];
   const flagged: NonNullable<DataVerdict["pushback"]>["flagged"] =
     pb.flaggedSources?.map(({ name, level, decidedBy, reason }) => ({ name, level, decidedBy, reason }))
     ?? pb.flagged.map((name) => ({ name })); // sessions from before flaggedSources: names only
   const named = flagged
     .map((f) => `"${f.name}"${f.level ? ` (Level ${f.level}${f.decidedBy ? `, by ${f.decidedBy}` : ""})` : ""}`)
     .join(", ");
-  const letter = option.title.match(/^\(\w\)/)?.[0] ?? `"${option.title}"`;
+  const letters = rules.map((r) => r.title.match(/^\(\w\)/)?.[0] ?? `"${r.title}"`).join(", then ");
   return {
     maxLevel, allowed, sources: s.sources,
-    pushback: { flagged, choice: pb.choice, title: option.title, rule: option.rule },
-    summary: `${base} Flagged ${named}; the requester chose ${letter}.`,
+    pushback: { flagged, choice: pb.choice, title: titles(pb), rule: ruleText(pb) },
+    summary: `${base} Flagged ${named}; the requester chose ${letters}.`,
   };
 }
 
-/** "Mentions {rule labels}. The data choice applies: {option title}." once the pushback is resolved. */
+/** Every applied choice's card title, in chosen order, joined with "; ". */
+const titles = (pb?: Pushback) => choiceRules(pb).map((r) => r.title).join("; ");
+
+/** "Mentions {rule labels}. The data choice applies: {option titles}." once the pushback is resolved. */
 function noteFor(s: Session, key: SlotKey, value: string): string | undefined {
-  const choice = s.pushback?.choice;
-  if (!choice || !value) return undefined;
+  if (!chosen(s.pushback).length || !value) return undefined;
   const hits = scanText(value, key);
   if (!hits.length) return undefined;
-  return `Mentions ${hits.map((h) => h.name).join(", ")}. The data choice applies: ${SCENARIO.pushback.options[choice].title}.`;
+  return `Mentions ${hits.map((h) => h.name).join(", ")}. The data choice applies: ${titles(s.pushback)}.`;
 }
 
 /** Model-free template from the requester's own words, the data rule, the scope and the pages. */
 export function draftInstructions(s: Session, knowledge: KnowledgeRef[]): string {
   const v = (k: SlotKey) => slotValue(s, k);
   const scope = s.scope ? scopeByKey(s.scope) : undefined;
-  const rule = s.pushback?.choice ? SCENARIO.pushback.options[s.pushback.choice].rule : "";
+  const rule = ruleText(s.pushback);
   const lines = [
     v("users") && sentence(`You help ${v("users")}`),
     scope && sentence(`Scope: ${scope.label}. ${scope.desc}`),

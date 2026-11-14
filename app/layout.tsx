@@ -1,9 +1,18 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Figtree, Fraunces, Geist_Mono } from "next/font/google";
+import { PaperGrain } from "@/components/PaperGrain";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Kiln type (KILN-AGENT §4). tokens.css reads these variables first in --font-display/body/mono.
+// Caveat (MarginNote only) is not loaded until a MarginNote with Rayyan's words exists.
+const fraunces = Fraunces({
+  variable: "--font-fraunces",
+  subsets: ["latin"],
+  axes: ["SOFT"],
+});
+
+const figtree = Figtree({
+  variable: "--font-figtree",
   subsets: ["latin"],
 });
 
@@ -21,9 +30,13 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      data-theme="light"
+      className={`${fraunces.variable} ${figtree.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <PaperGrain />
+        {children}
+      </body>
     </html>
   );
 }

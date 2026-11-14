@@ -13,7 +13,7 @@ async function ReviewerForLink({ params }: { params: PageProps<"/review/[id]">["
 /** Reviewer link. The id is the review token, never the session id (ADR 0011). */
 export default function ReviewPage({ params }: PageProps<"/review/[id]">) {
   return (
-    <Suspense fallback={<p className="mx-auto w-full max-w-6xl px-4 py-6 text-sm text-zinc-500 sm:px-6">Loading the blueprint…</p>}>
+    <Suspense fallback={<p className="small mx-auto w-full max-w-6xl px-(--space-3) py-(--space-5) font-normal text-ink-muted sm:px-(--space-6)">Loading the blueprint…</p>}>
       <ReviewerForLink params={params} />
     </Suspense>
   );

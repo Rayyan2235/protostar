@@ -1,0 +1,137 @@
+/* Kiln tokens: copy of the kiln skill's tokens.css (ADR 0012). The project's one tokens file.
+   Only change: --font-display/body/mono list the next/font variables (app/layout.tsx) first.
+   Never write raw colours, sizes, font names or easings anywhere else. */
+:root, [data-theme="light"] {
+  --paper: #faf6ef;
+  --paper-raised: #fffdf8;
+  --paper-sunk: #f1eadd;
+  --ink: #1c2230;
+  --ink-soft: #3d4352;
+  --ink-muted: #5e6371;
+  --stone: #c9bfae;
+  --hairline: #e5dccb;
+  --accent: #1f3a5c;
+  --accent-fill: #f2b37c;
+  --link: #1d4e89;
+  --signal: #d9482b;
+  --danger: #a8231a;
+  --success: #1f6f8b;
+  --button-bg: #1c2230;
+  --button-ink: #faf6ef;
+  --on-art: #fff8ee;
+  --scrim: rgba(12,16,26,0.45);
+  --land: #1b2433;
+  --sky-dawn-top: #f6c3a1;
+  --sky-dawn-low: #fde7c4;
+  --sky-day-top: #9fc7dc;
+  --sky-day-low: #f1ede0;
+  --sky-dusk-top: #5d4170;
+  --sky-dusk-low: #f2a46b;
+  --sky-night-top: #070d1a;
+  --sky-night-low: #22325a;
+  --sky-storm-top: #3f4757;
+  --sky-storm-low: #8a93a2;
+  --glow: #f7b27a;
+  --petal: #f7c3c9;
+  --shadow-float: 0 8px 30px rgba(28,34,48,0.10);
+  --shadow-sheet: 0 18px 40px -18px rgba(28,34,48,0.40);
+}
+[data-theme="dark"] {
+  --paper: #12141a;
+  --paper-raised: #1a1d25;
+  --paper-sunk: #1f2330;
+  --ink: #f1ece2;
+  --ink-soft: #cfc8bb;
+  --ink-muted: #9c9688;
+  --stone: #474b57;
+  --hairline: #2b303c;
+  --accent: #9cc0e6;
+  --accent-fill: #3a5a80;
+  --link: #8fbaf0;
+  --signal: #ff7a59;
+  --danger: #ff8a80;
+  --success: #7cc7e0;
+  --button-bg: #f1ece2;
+  --button-ink: #12141a;
+  --shadow-float: 0 8px 30px rgba(0,0,0,0.45);
+  --shadow-sheet: 0 18px 40px -18px rgba(0,0,0,0.70);
+}
+[data-theme="dusk"] {
+  --paper: #fbeee3;
+  --paper-raised: #fff6ee;
+  --paper-sunk: #f6dccb;
+  --ink: #2a1b22;
+  --ink-soft: #4a3440;
+  --ink-muted: #6d5360;
+  --stone: #d9b3a0;
+  --hairline: #ecc9b4;
+  --accent: #5a2a3e;
+  --accent-fill: #f3a48b;
+  --link: #6b2c47;
+  --signal: #c2381f;
+  --danger: #9c1f17;
+  --success: #1a5d75;
+  --button-bg: #2a1b22;
+  --button-ink: #fbeee3;
+  --shadow-float: 0 8px 30px rgba(42,27,34,0.12);
+  --shadow-sheet: 0 18px 40px -18px rgba(42,27,34,0.40);
+}
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 16px;
+  --space-4: 24px;
+  --space-5: 40px;
+  --space-6: 64px;
+  --space-7: 120px;
+  --space-8: 200px;
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 24px;
+  --radius-frame: 32px;
+  --radius-pill: 999px;
+  --dur-quick: 180ms;
+  --dur-enter: 600ms;
+  --dur-mood: 1200ms;
+  --dur-drift: 26s;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-inout: cubic-bezier(0.65, 0, 0.35, 1);
+  --grain-strength: 0.45;
+  --font-display: var(--font-fraunces), Fraunces, "Iowan Old Style", Georgia, serif;
+  --font-body: var(--font-figtree), Figtree, ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), "Geist Mono", ui-monospace, Menlo, monospace;
+  --font-hand: Caveat, "Comic Sans MS", cursive;
+}
+.display-xl { font-family: var(--font-display); font-size: 96px; line-height: 0.95; font-weight: 600; letter-spacing: -2.4px; }
+.display { font-family: var(--font-display); font-size: 60px; line-height: 1.04; font-weight: 500; letter-spacing: -1.4px; }
+.heading-1 { font-family: var(--font-display); font-size: 44px; line-height: 1.05; font-weight: 500; letter-spacing: -1px; }
+.heading-2 { font-family: var(--font-display); font-size: 28px; line-height: 1.15; font-weight: 600; letter-spacing: -0.4px; }
+.title { font-family: var(--font-body); font-size: 19px; line-height: 26px; font-weight: 600; letter-spacing: 0; }
+.body-lg { font-family: var(--font-body); font-size: 19px; line-height: 1.55; font-weight: 400; letter-spacing: 0; }
+.body { font-family: var(--font-body); font-size: 17px; line-height: 1.6; font-weight: 400; letter-spacing: 0; }
+.small { font-family: var(--font-body); font-size: 14px; line-height: 20px; font-weight: 500; letter-spacing: 0; }
+.label { font-family: var(--font-mono); font-size: 12px; line-height: 16px; font-weight: 400; letter-spacing: 1.4px; }
+.hand { font-family: var(--font-hand); font-size: 24px; line-height: 1.15; font-weight: 500; letter-spacing: 0; }
+
+/* ---------------------------------------------------------------------------------------------
+   Project overrides (ADR 0012 addendum 2), plan-kiln K6a. Kiln's lines above stay as copied.
+   Each is a Kiln deviation listed for Rayyan in the PR body; drop one by deleting its lines.
+   --------------------------------------------------------------------------------------------- */
+:root {
+  /* Controls lose the pill: buttons, the arrow chip, Tag, TextField, Kbd. Round stays only where
+     shape means something (the ChoiceList dot, Tag's live dot). */
+  --radius-control: 4px;
+  /* PaperGrain: a static surface finish from ink, so it follows each theme.
+     Bound: --grain-opacity x --grain-share <= 0.04 (contrast.test.ts checks the worst case). */
+  --grain-share: 8%;
+  --grain-opacity: 0.5;
+  --grain:
+    radial-gradient(color-mix(in oklab, var(--ink) var(--grain-share), transparent) 0.6px, transparent 0.8px) 0 0 / 3px 3px,
+    radial-gradient(color-mix(in oklab, var(--ink) var(--grain-share), transparent) 0.5px, transparent 0.7px) 1px 2px / 5px 5px,
+    radial-gradient(color-mix(in oklab, var(--ink) var(--grain-share), transparent) 0.6px, transparent 0.9px) 2px 1px / 7px 7px;
+}
+/* Steep's one display weight. Tracking is already negative and tightens with size, so it stays. */
+.display-xl { font-weight: 400; }
+.display { font-weight: 400; }
+.heading-1 { font-weight: 400; }
+.heading-2 { font-weight: 400; }

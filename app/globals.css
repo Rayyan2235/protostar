@@ -1,13 +1,146 @@
 @import "tailwindcss";
+/* Unlayered on purpose: these :root declarations must win over Tailwind's theme layer (see below). */
+@import "./tokens.css";
 
+/*
+ * Tailwind speaks only Kiln (ADR 0012, plan-kiln K3). Each default namespace is reset, then Kiln's
+ * tokens are mapped back: bg-paper, text-ink, p-3 (= space-3), rounded-md (= radius-md),
+ * ease-out... A Tailwind default colour, or p-7, now generates nothing. Shadows map to nothing
+ * (K6a: depth comes from tone), so no shadow utility exists.
+ * Arbitrary values still read tokens: p-(--space-3), duration-(--dur-quick).
+ *
+ * Where a Kiln name equals a Tailwind theme name (--font-*, --ease-*, --radius-*),
+ * Tailwind also writes "--x: var(--x)" into its theme layer. tokens.css is unlayered, so its value wins.
+ */
 @theme inline {
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-*: initial;
+  --spacing-*: initial;
+  --radius-*: initial;
+  --shadow-*: initial;
+  --font-*: initial;
+  --ease-*: initial;
+
+  --color-paper: var(--paper);
+  --color-paper-raised: var(--paper-raised);
+  --color-paper-sunk: var(--paper-sunk);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-muted: var(--ink-muted);
+  --color-stone: var(--stone);
+  --color-hairline: var(--hairline);
+  --color-accent: var(--accent);
+  --color-accent-fill: var(--accent-fill);
+  --color-link: var(--link);
+  --color-signal: var(--signal);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
+  --color-button-bg: var(--button-bg);
+  --color-button-ink: var(--button-ink);
+  --color-on-art: var(--on-art);
+  --color-scrim: var(--scrim);
+
+  /* 0 keeps min-w-0, inset-0 and basis-0 working after the reset. */
+  --spacing-0: 0;
+  --spacing-1: var(--space-1);
+  --spacing-2: var(--space-2);
+  --spacing-3: var(--space-3);
+  --spacing-4: var(--space-4);
+  --spacing-5: var(--space-5);
+  --spacing-6: var(--space-6);
+  --spacing-7: var(--space-7);
+  --spacing-8: var(--space-8);
+
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-frame: var(--radius-frame);
+  --radius-pill: var(--radius-pill);
+  --radius-control: var(--radius-control);
+
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+  --font-mono: var(--font-mono);
+
+  --ease-out: var(--ease-out);
+  --ease-inout: var(--ease-inout);
 }
 
-/* Light only until the Phase 4 polish pass. */
+/* Kiln §4: Fraunces with the SOFT axis at 100, roman only. */
+.display-xl, .display, .heading-1, .heading-2, .font-display {
+  font-variation-settings: "SOFT" 100;
+}
+
 body {
-  background: #f8f8f9;
-  color: #18181b;
-  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+}
+
+/* PaperGrain (K6a): one fixed, aria-hidden div behind content. Static; gone where it can't help. */
+.paper-grain {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--grain);
+  opacity: var(--grain-opacity);
+}
+@media (forced-colors: active) {
+  .paper-grain { display: none; }
+}
+@media print {
+  .paper-grain { display: none; }
+}
+
+/* MorphNote (K6b): the View Transitions it starts run at --dur-quick (<= 300 ms) and stop under reduced motion. */
+::view-transition-group(*),
+::view-transition-old(*),
+::view-transition-new(*) {
+  animation-duration: var(--dur-quick);
+  animation-timing-function: var(--ease-out);
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none;
+  }
+}
+
+/* SectionTabs (K6b): the incoming panel slides in by --space-3 from the side the tab order implies. No height animation. */
+.tab-panel {
+  transition: opacity var(--dur-quick) var(--ease-out), translate var(--dur-quick) var(--ease-out);
+}
+@starting-style {
+  .tab-panel[data-from="right"] { opacity: 0; translate: var(--space-3) 0; }
+  .tab-panel[data-from="left"] { opacity: 0; translate: calc(-1 * var(--space-3)) 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tab-panel { transition: none; }
+}
+@media print {
+  [role="tabpanel"][hidden] { display: block !important; }
+}
+
+/* FoldedSheet (K6b): the top-right corner is cut by --space-4; a stone triangle shows the fold. */
+.folded-sheet {
+  position: relative;
+  clip-path: polygon(0 0, calc(100% - var(--space-4)) 0, 100% var(--space-4), 100% 100%, 0 100%);
+}
+.folded-sheet::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: var(--space-4);
+  height: var(--space-4);
+  background: linear-gradient(to bottom left, transparent 50%, var(--stone) 50%);
+}
+@media (forced-colors: active) {
+  .folded-sheet { clip-path: none; }
+  .folded-sheet::before { display: none; }
+}
+@media print {
+  .folded-sheet { clip-path: none; }
+  .folded-sheet::before { display: none; }
 }

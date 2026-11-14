@@ -66,7 +66,11 @@ export interface Pushback {
   /** Rule ids behind the flag; once resolved, the same rule doesn't re-flag. */
   flaggedRules: string[];
   options: PushbackChoice[];
+  /** The latest applied choice (back-compat; recommendedScope follows it). */
   choice?: PushbackChoice;
+  /** Every applied choice, in first-chosen order, deduped. All stay in force. Old sessions lack it:
+   *  read it through lib/pushback.ts chosen(). */
+  choices?: PushbackChoice[];
   attempts: number;
   /** The Level 3–4 Source objects that raised the flag, kept after RESOLVE_PUSHBACK removes them
    *  from `sources`. Accumulates like flaggedRules. Old sessions lack it. */
@@ -167,9 +171,9 @@ export interface DataVerdict {
   pushback?: {
     /** From Pushback.flaggedSources; for old sessions without it, names only (level/decidedBy absent). */
     flagged: { name: string; level?: Level; decidedBy?: "rule" | "model"; reason?: string }[];
-    choice: PushbackChoice;
-    title: string;   // SCENARIO.pushback.options[choice].title
-    rule: string;    // SCENARIO.pushback.options[choice].rule
+    choice: PushbackChoice;  // the latest
+    title: string;   // every applied choice's SCENARIO.pushback.options[c].title, in chosen order, joined "; "
+    rule: string;    // lib/pushback.ts ruleText: every applied rule, in chosen order, joined " "
   };
   /** One plain sentence, e.g. "All sources are Level 1–2. Degree audits were flagged (Level 3, by rule); you chose (a)."
    *  Level and "by rule/model" are left out when unknown (old sessions). */

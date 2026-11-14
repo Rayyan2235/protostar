@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildBlueprint, dataVerdict, draftInstructions, TESTS_NOT_RUN } from "./blueprint";
+import { blueprintJson, blueprintMarkdown } from "./export";
 import { initial, reduce, type Action } from "./journey";
 import { SCENARIO } from "./scenario";
 import { estimate, priceFor, PRICE_SOURCE, PRICES_AS_OF } from "./scoper";
@@ -178,4 +179,80 @@ test("draft instructions are a template built only from Dana's words, the rule a
   assert.ok(text.split(/\r?\n/).includes(`Must never (from the requester): ${ANSWERS.never}.`), text);
   assert.doesNotMatch(text, /You must never/);
   assert.deepEqual(bp(s).instructions, { text, draftedBy: "template" });
+});
+
+// BE-12 (plan-4 §5): every applied data choice stays in force, in first-chosen order.
+const transcripts: Source = { name: "Students upload transcripts", level: 3, decidedBy: "rule", reason: "A transcript is a FERPA student record (Level 3).", ruleId: "transcript" };
+const { selfreport, route } = SCENARIO.pushback.options;
+/** Dana after a second flag (transcripts) resolved with (b). */
+function twoChoices(): Session {
+  const s = dana();
+  return {
+    ...s,
+    pushback: {
+      ...s.pushback!, flagged: [transcripts.name], flaggedRules: ["degree-audit", "transcript"],
+      flaggedSources: [audit, transcripts], choice: "route", choices: ["selfreport", "route"],
+    },
+  };
+}
+/** The handoff answer mentions a degree audit, so its slot gets a note. */
+const withNote = (s: Session): Session =>
+  ({ ...s, slots: s.slots.map((x) => (x.key === "handoff" ? { ...x, value: "Anything where they paste their degree audit" } : x)) });
+const oldStyle = (s: Session): Session => {
+  const pb = { ...s.pushback! };
+  delete pb.choices;
+  return { ...s, pushback: pb };
+};
+
+test("an old session (choice only) gives today's verdict, byte for byte", () => {
+  const s = dana();
+  assert.deepEqual(s.pushback?.choices, ["selfreport"], "a new session records choices");
+  const old = oldStyle(s);
+  assert.equal(old.pushback?.choices, undefined);
+  const d = dataVerdict(old);
+  assert.equal(d.summary, `All sources are Level 1–2. Flagged "${audit.name}" (Level 3, by rule); the requester chose (a).`);
+  assert.deepEqual(d.pushback, {
+    flagged: [{ name: audit.name, level: 3, decidedBy: "rule", reason: audit.reason }],
+    choice: "selfreport", title: selfreport.title, rule: selfreport.rule,
+  });
+  assert.equal(JSON.stringify(d), JSON.stringify(dataVerdict(s)));
+});
+
+test("choices [x] gives the same verdict, notes, instructions and export as an old choice x", () => {
+  for (const x of ["selfreport", "route"] as const) {
+    const s = withNote(dana());
+    const fresh: Session = { ...s, pushback: { ...s.pushback!, choice: x, choices: [x] } };
+    const old = oldStyle({ ...s, pushback: { ...s.pushback!, choice: x } });
+    assert.equal(JSON.stringify(dataVerdict(fresh)), JSON.stringify(dataVerdict(old)), x);
+    assert.equal(draftInstructions(fresh, knowledge), draftInstructions(old, knowledge), x);
+    assert.deepEqual(bp(fresh).spec, bp(old).spec, x);
+    assert.equal(blueprintMarkdown(bp(fresh)), blueprintMarkdown(bp(old)), x);
+    assert.equal(blueprintJson(bp(fresh)), blueprintJson(bp(old)), x);
+  }
+});
+
+test("two choices: the verdict joins titles and rules, names both sources, and says (a), then (b)", () => {
+  const d = dataVerdict(twoChoices());
+  assert.equal(d.pushback?.choice, "route", "choice is the latest");
+  assert.equal(d.pushback?.title, `${selfreport.title}; ${route.title}`);
+  assert.equal(d.pushback?.rule, `${selfreport.rule} ${route.rule}`);
+  assert.deepEqual(d.pushback?.flagged.map((f) => f.name), [audit.name, transcripts.name]);
+  assert.equal(d.summary,
+    `All sources are Level 1–2. Flagged "${audit.name}" (Level 3, by rule), "${transcripts.name}" (Level 3, by rule); the requester chose (a), then (b).`);
+});
+
+test("two choices: the slot note and the draft instructions carry both rules in order", () => {
+  const s = withNote(twoChoices());
+  assert.equal(bp(s).spec.find((x) => x.key === "handoff")?.note,
+    `Mentions Degree audits. The data choice applies: ${selfreport.title}; ${route.title}.`);
+  const text = draftInstructions(s, knowledge);
+  const a = text.indexOf(selfreport.rule);
+  const b = text.indexOf(route.rule);
+  assert.ok(a >= 0 && b > a, text);
+});
+
+test("two choices: the export markdown has both rules", () => {
+  const md = blueprintMarkdown(bp(twoChoices()));
+  assert.ok(md.includes(`- Data choice: ${selfreport.title}; ${route.title}`), md);
+  assert.ok(md.includes(`- Rule added to the agent: ${selfreport.rule} ${route.rule}`), md);
 });

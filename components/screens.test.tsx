@@ -148,16 +148,18 @@ const view = (over: Partial<ReviewView> = {}): ReviewView => ({
   ...over,
 } as ReviewView);
 
-test("DecisionForm: Approve is the one pill; changes and reject are outlined", () => {
-  const html = renderToStaticMarkup(<DecisionForm enabled busy={false} onDecide={async () => true} />);
+test("DecisionForm: Approve is the one filled primary; changes and reject are outlined", () => {
+  const html = renderToStaticMarkup(<DecisionForm version={2} enabled busy={false} onDecide={async () => true} />);
   assert.equal(count(html, 'data-chip="arrow"'), 1);
   assert.equal(count(html, "<button"), 3);
-  assert.match(html, /<label[^>]*for="review-note"/);
-  assert.match(html, /<textarea[^>]*id="review-note"/);
+  // K6b: each decision morphs into its own note panel (k6b-morph.test.tsx).
+  const open = renderToStaticMarkup(<DecisionForm version={2} enabled busy={false} onDecide={async () => true} initialOpen="changes" />);
+  assert.match(open, /<label[^>]*for="review-note"/);
+  assert.match(open, /<textarea[^>]*id="review-note"/);
 });
 
-test("reviewer note (K5a): autosize, but no Enter shortcut and no Kbd hint", () => {
-  const html = renderToStaticMarkup(<DecisionForm enabled busy={false} onDecide={async () => true} />);
+test("reviewer note (K5a, K6b): autosize; Enter is a new line; Kbd only on Request changes (Approve/Reject have none)", () => {
+  const html = renderToStaticMarkup(<DecisionForm version={2} enabled busy={false} onDecide={async () => true} initialOpen="approved" />);
   assert.match(html, /<textarea[^>]*id="review-note"[^>]*class="[^"]*resize-none/);
   assert.equal(count(html, "<kbd"), 0);
 });
@@ -170,9 +172,9 @@ test("a bad review link is a type-only EmptyState with one action", () => {
 });
 
 test("DecisionForm disabled: no pill arrow, controls disabled, says why", () => {
-  const html = renderToStaticMarkup(<DecisionForm enabled={false} busy={false} onDecide={async () => true} />);
+  const html = renderToStaticMarkup(<DecisionForm version={2} enabled={false} busy={false} onDecide={async () => true} />);
   assert.equal(count(html, 'data-chip="arrow"'), 0);
-  assert.equal(count(html, 'disabled=""'), 4);
+  assert.equal(count(html, 'disabled=""'), 3);
   assert.match(text(html), /Nothing to decide right now\./);
 });
 

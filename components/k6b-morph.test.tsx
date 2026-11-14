@@ -161,3 +161,10 @@ test("spec panel Edit open: the slot editor named after the slot, Save and Cance
   assert.equal(new Set(names(html)).size, 6, "still unique with one open");
   assert.doesNotMatch(html, /id="edit-users-btn"/);
 });
+
+test("view transitions run at --dur-quick and are off under reduced motion", async () => {
+  const { readFileSync } = await import("node:fs");
+  const css = readFileSync("app/globals.css", "utf8");
+  assert.match(css, /::view-transition-group\(\*\)[\s\S]*?animation-duration:\s*var\(--dur-quick\)/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)\s*\{[^@]*::view-transition-new\(\*\)\s*\{\s*animation:\s*none/);
+});

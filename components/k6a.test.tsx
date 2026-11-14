@@ -82,7 +82,7 @@ test("one filled primary per screen (start, tests step, reviewer decision)", () 
   const filled = (html: string) => count(html, "bg-button-bg");
   assert.ok(filled(renderToStaticMarkup(<Studio />)) <= 1, "start");
   assert.equal(filled(renderToStaticMarkup(<TestsStep busy={false} send={() => {}} />)), 1, "tests step");
-  assert.equal(filled(renderToStaticMarkup(<DecisionForm enabled busy={false} onDecide={async () => true} />)), 1, "reviewer");
+  assert.equal(filled(renderToStaticMarkup(<DecisionForm version={2} enabled busy={false} onDecide={async () => true} />)), 1, "reviewer");
 });
 
 test("PaperGrain: exactly one aria-hidden div, no children", () => {

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Session } from "@/lib/types";
 import type { Catalog } from "@/lib/engine";
-import Studio, { Composer, DoneBanner, Ledger, nextFocus, PushbackCard, SessionNotFound, SlotEditor, SpecPanel, TestsStep } from "./studio";
+import Studio, { Composer, DoneBanner, Ledger, nextFocus, PushbackCard, SessionNotFound, SpecPanel, TestsStep } from "./studio";
 import { ScopePicker, ScopeSummary } from "./scope";
 
 const count = (html: string, needle: string) => html.split(needle).length - 1;
@@ -87,7 +87,7 @@ test("each Edit button is named after its slot", () => {
 });
 
 test("the slot edit field is a labelled TextField named after the slot", () => {
-  const html = renderToStaticMarkup(<SlotEditor slotKey="users" value="Sophomores" onSave={() => {}} onCancel={() => {}} />);
+  const html = renderToStaticMarkup(<SpecPanel session={session()} busy={false} onEdit={() => {}} initialEditing="users" />);
   assert.match(html, /<label[^>]*for="edit-users"[^>]*>Who uses it<\/label>/);
   assert.match(html, /<textarea[^>]*id="edit-users"/);
   assert.match(text(html), /Save/);

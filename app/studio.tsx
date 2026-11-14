@@ -13,6 +13,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { FlowRail } from "@/components/FlowRail";
 import { KeyHint, submitOnEnter } from "@/components/Kbd";
 import { ModeBadge } from "@/components/ModeBadge";
+import { MorphNote } from "@/components/MorphNote";
 import { Notice } from "@/components/Notice";
 import { StatusProvider, useStatus } from "@/components/StatusStrip";
 import { TextField } from "@/components/TextField";
@@ -459,35 +460,15 @@ export function PushbackCard({ session, busy, onResolve }: { session: Session; b
   );
 }
 
-/** Inline editor for one spec slot: a TextField named after the slot, Save and Cancel. */
-export function SlotEditor({ slotKey, value, onSave, onCancel }: {
-  slotKey: SlotKey; value: string; onSave: (v: string) => void; onCancel: () => void;
+export function SpecPanel({ session, busy, onEdit, initialEditing }: {
+  session?: Session; busy: boolean; onEdit: (k: SlotKey, v: string) => void;
+  /** Server-render one slot's editor open (tests). The page always starts closed. */
+  initialEditing?: SlotKey;
 }) {
-  const [draft, setDraft] = useState(value);
-  return (
-    <form className="flex flex-col gap-(--space-2)" onSubmit={(e) => { e.preventDefault(); onSave(draft); }}>
-      <TextField id={`edit-${slotKey}`} label={SLOT_LABELS[slotKey]} hideLabel multiline rows={2} autoFocus value={draft} onChange={setDraft}
-        onFocus={(e) => { const end = e.currentTarget.value.length; e.currentTarget.setSelectionRange(end, end); }}
-        onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); onCancel(); } }} />
-      <div className="flex flex-wrap items-center gap-(--space-3)">
-        <Button kind="outline" type="submit">Save</Button>
-        <Button kind="link" onClick={onCancel}>Cancel</Button>
-      </div>
-    </form>
-  );
-}
-
-export function SpecPanel({ session, busy, onEdit }: { session?: Session; busy: boolean; onEdit: (k: SlotKey, v: string) => void }) {
-  const [editing, setEditing] = useState<SlotKey>();
-  /** After Cancel, focus returns to that slot's Edit button. */
-  const refocus = useRef<SlotKey | null>(null);
+  const [editing, setEditing] = useState<SlotKey | undefined>(initialEditing);
+  /** Typed text per slot. It survives a close (Esc, Cancel) and is dropped once saved. */
+  const [drafts, setDrafts] = useState<Partial<Record<SlotKey, string>>>({});
   const canEdit = (session?.step === "interview" || session?.step === "blueprint") && !session.pushback?.blocking && !busy;
-
-  useEffect(() => {
-    if (editing || !refocus.current) return;
-    document.getElementById(`edit-${refocus.current}-btn`)?.focus();
-    refocus.current = null;
-  }, [editing]);
 
   return (
     <>
@@ -496,28 +477,29 @@ export function SpecPanel({ session, busy, onEdit }: { session?: Session; busy: 
         <dl>
           {SLOT_KEYS.map((key) => {
             const slot = session?.slots.find((s) => s.key === key);
+            const draft = drafts[key] ?? slot?.value ?? "";
+            const save = () => {
+              setEditing(undefined);
+              setDrafts((d) => { const next = { ...d }; delete next[key]; return next; });
+              onEdit(key, draft);
+            };
             return (
               <div key={key} className="border-b border-hairline py-(--space-2) last:border-b-0">
                 <dt className="flex flex-wrap items-center justify-between gap-(--space-2)">
                   <span className="small text-ink-soft">{SLOT_LABELS[key]}</span>
                   {slot && <span className="label text-ink-muted">{slot.filledBy === "requester" ? "You" : `Prefilled · ${Math.round((slot.confidence ?? 0) * 100)}%`}</span>}
                 </dt>
-                {editing === key && slot ? (
-                  <dd className="mt-(--space-1)">
-                    <SlotEditor slotKey={key} value={slot.value}
-                      onSave={(v) => { setEditing(undefined); onEdit(key, v); }}
-                      onCancel={() => { refocus.current = key; setEditing(undefined); }} />
-                  </dd>
-                ) : (
-                  <dd className="mt-(--space-1) flex items-start justify-between gap-(--space-2)">
-                    <span className={`small font-normal ${slot ? "text-ink" : "text-ink-muted"}`}>{slot?.value ?? "—"}</span>
-                    {canEdit && slot && (
-                      <Button id={`edit-${key}-btn`} kind="link" className="shrink-0" onClick={() => setEditing(key)}>
-                        Edit<span className="sr-only"> {SLOT_LABELS[key]}</span>
-                      </Button>
-                    )}
-                  </dd>
-                )}
+                {/* The Edit button morphs into the slot editor (K6b). One open at a time; Esc = Cancel, focus back on Edit. */}
+                <dd className={`mt-(--space-1) flex gap-(--space-2) ${editing === key ? "flex-col" : "items-start justify-between"}`}>
+                  {editing !== key && <span className={`small font-normal ${slot ? "text-ink" : "text-ink-muted"}`}>{slot?.value ?? "—"}</span>}
+                  {slot && (canEdit || editing === key) && (
+                    <MorphNote id={`edit-${key}`} name={`morph-edit-${key}`} open={editing === key}
+                      onOpenChange={(o) => setEditing(o ? key : undefined)}
+                      trigger={<>Edit<span className="sr-only"> {SLOT_LABELS[key]}</span></>} triggerKind="link" triggerClassName="shrink-0"
+                      prompt={SLOT_LABELS[key]} hidePrompt value={draft} onChange={(v) => setDrafts((d) => ({ ...d, [key]: v }))} rows={2}
+                      submitLabel="Save" submitKind="outline" submitKey busy={busy} onSubmit={save} />
+                  )}
+                </dd>
               </div>
             );
           })}

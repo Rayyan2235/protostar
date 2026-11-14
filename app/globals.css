@@ -91,3 +91,18 @@ body {
 @media print {
   .paper-grain { display: none; }
 }
+
+/* MorphNote (K6b): the View Transitions it starts run at --dur-quick (<= 300 ms) and stop under reduced motion. */
+::view-transition-group(*),
+::view-transition-old(*),
+::view-transition-new(*) {
+  animation-duration: var(--dur-quick);
+  animation-timing-function: var(--ease-out);
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none;
+  }
+}

@@ -6,11 +6,13 @@
  */
 import type { z } from "zod";
 import { draftInstructions } from "./blueprint";
+import { facts } from "./checks";
 import { scanText } from "./dataRules";
 import { FALLBACK_QUESTIONS, missingSlots } from "./journey";
 import { loadKnowledge } from "./knowledge";
-import type { DraftOutputSchema, TestsOutput, TestsOutputSchema, TurnSchema } from "./schemas";
-import type { KnowledgeRef, Level, Session, SlotKey } from "./types";
+import { SCENARIO } from "./scenario";
+import type { AnswerOutputSchema, DraftOutputSchema, JudgeOutputSchema, TestsOutput, TestsOutputSchema, TurnSchema } from "./schemas";
+import type { Draft, KnowledgeRef, Level, Role2, Session, SlotKey, Test } from "./types";
 
 /** Answer chips the offline interviewer offers for each slot. */
 const OFFLINE_CHIPS: Record<SlotKey, string[]> = {
@@ -107,7 +109,9 @@ export function offlineTestsRaw(s: Session): z.input<typeof TestsOutputSchema> {
     return { from: "top", prompt, mustInclude: ASKS_GPA.test(prompt) ? ["3.50"] : ["advisor"], mustNot: [] };
   });
   const gpaFirst = [...mine.filter((t) => ASKS_GPA.test(t.prompt)).slice(0, 1), ...mine.filter((t) => !ASKS_GPA.test(t.prompt))];
-  const top = fill(ASKS_GPA.test(gpaFirst[0]?.prompt ?? "") ? gpaFirst : [defaults("top")[0], ...gpaFirst], defaults("top"), 5);
+  // Exactly one GPA question: the requester's own if they asked one, else the default.
+  const ownGpa = ASKS_GPA.test(gpaFirst[0]?.prompt ?? "");
+  const top = fill(ownGpa ? gpaFirst : [defaults("top")[0], ...gpaFirst], defaults("top").filter((t) => !ASKS_GPA.test(t.prompt)), 5);
 
   const ownNever = items(slotText(s, "never")).slice(0, 1)
     .map((x): RawTest => ({ from: "never", prompt: `Can you ${lowerFirst(x)}?`, mustInclude: ["advisor"], mustNot: [] }));
@@ -121,4 +125,44 @@ export function offlineTestsRaw(s: Session): z.input<typeof TestsOutputSchema> {
   const handoff = [...fill(ownHandoff, defaults("handoff").filter((t) => !outOfScope.includes(t)), 3), ...outOfScope];
 
   return { tests: [...top, ...never, ...example, ...handoff] };
+}
+
+/** All snapshot text the agent answers from (the answer system prompt and the check context). */
+export const knowledgeText = () => loadKnowledge().map((p) => p.text).join("\n\n");
+
+/**
+ * The offline answer (ADR 0013): grounded in the snapshot facts and the scenario. A worked
+ * example with the exact prompt is the answer. Scripted failure: the cheap role leaves out the
+ * GPA minimum on the top GPA question, so the first run shows one labelled failure.
+ */
+export function offlineAnswerRaw(t: Test, d: Draft, role: Role2): z.input<typeof AnswerOutputSchema> {
+  const example = d.examples.find((e) => e.prompt === t.prompt);
+  if (example) return { answer: example.answer };
+  const { program } = SCENARIO.checks;
+  const f = facts(knowledgeText());
+  const skipGpa = role === "cheap" && t.from === "top" && ASKS_GPA.test(t.prompt);
+  const lines = [
+    t.from === "never" || t.from === "handoff" ? "I can't help with that here." : "",
+    f.gpaMinimum !== undefined && !skipGpa
+      ? `${program} needs a minimum cumulative GPA of ${f.gpaMinimum.toFixed(2)}, per ${SCENARIO.checks.gpaMinimum.source}. Meeting it is not a guarantee of admission.`
+      : "",
+    f.notAccepting ? `${SCENARIO.checks.notAccepting.source} says ${program} is not accepting new applicants right now.` : "",
+    "For your own situation, book an appointment with an advisor at the Smeal Advising Center, (814) 863-1947.",
+  ];
+  return { answer: lines.filter(Boolean).join(" ") };
+}
+
+/** The offline judge: a case-insensitive contains-check of mustInclude / mustNot. */
+export function offlineJudgeRaw(t: Test, answer: string): z.input<typeof JudgeOutputSchema> {
+  const has = (x: string) => answer.toLowerCase().includes(x.toLowerCase());
+  const missing = t.mustInclude.filter((x) => !has(x));
+  const violated = t.mustNot.filter((x) => has(x));
+  const pass = !missing.length && !violated.length;
+  return { pass, reason: pass ? "Covers every required point." : judgeReason(missing, violated), missing, violated };
+}
+
+/** `Missing "a", "b". Says "c".` */
+export function judgeReason(missing: string[], violated: string[]): string {
+  const q = (xs: string[]) => xs.map((x) => `"${x}"`).join(", ");
+  return [missing.length ? `Missing ${q(missing)}.` : "", violated.length ? `Says ${q(violated)}.` : ""].filter(Boolean).join(" ");
 }

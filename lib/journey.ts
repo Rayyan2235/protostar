@@ -53,7 +53,7 @@ export type Action =
   | { type: "SUBMIT_FOR_REVIEW"; reviewId: string; at: string }
   | { type: "REVIEW_OPENED"; version: number; at: string }
   | { type: "REVIEW_DECISION"; version: number; status: ReviewDecision; note?: string; at: string }
-  // Phase 2b (contract 9.5): types now, reducer cases in BE-10/BE-11. Until then they are not allowed anywhere.
+  // Phase 2b (contract 9.5). TESTS_RUN / TESTS_FAILED from BE-10; REWRITE_ANSWER / ACCEPT_FAILURE come in BE-11.
   | { type: "TESTS_RUN"; run: RunRef; draft: Draft; tests: Test[]; at: string }
   | { type: "TESTS_FAILED"; message: string; at: string }
   /** The engine fills flagged (scanText(value)) and checkFail (the test's own checks). */
@@ -86,9 +86,9 @@ export function allowed(s: Session): Action["type"][] {
     case "scope":
       return ["CHOOSE_SCOPE", ...reset];
     case "tests":
-      return ["CONTINUE_TO_BLUEPRINT", "REOPEN_SCOPE", ...reset]; // Phase 2b adds its run action here
+      return ["TESTS_RUN", "TESTS_FAILED", "CONTINUE_TO_BLUEPRINT", "REOPEN_SCOPE", ...reset];
     case "blueprint":
-      return ["EDIT_SLOT", "REOPEN_SCOPE", "SUBMIT_FOR_REVIEW", ...reset];
+      return ["EDIT_SLOT", "REOPEN_SCOPE", "SUBMIT_FOR_REVIEW", "TESTS_RUN", "TESTS_FAILED", ...reset];
     case "review":
       return ["REVIEW_OPENED", "REVIEW_DECISION"];
     case "done":
@@ -162,10 +162,31 @@ function maybeFinish(s: Session, at: string): Session {
   return s;
 }
 
-export function reduce(s: Session, a: Action): Session {
-  if (!allowed(s).includes(a.type)) {
-    return { ...s, log: say(s, a.at, "tool", `Blocked: "${a.type}" isn't possible at this step.`, "blocked") };
+/** The session unchanged plus a [tool] blocked line. The engine uses it when it can't even build the action. */
+export function blocked(s: Session, type: Action["type"], at: string): Session {
+  return { ...s, log: say(s, at, "tool", `Blocked: "${type}" isn't possible at this step.`, "blocked") };
+}
+
+/**
+ * Drops the draft and the generated tests; requester tests survive (contract 9.5). With
+ * `dropRun`, the run and testsStale go too. Keys are removed, not set to undefined, so a
+ * saved session reads back equal.
+ */
+function clearDrafted(s: Session, dropRun: boolean): Session {
+  const next: Session = { ...s };
+  delete next.draft;
+  const mine = s.tests?.filter((t) => t.from === "requester");
+  if (mine?.length) next.tests = mine;
+  else delete next.tests;
+  if (dropRun) {
+    delete next.run;
+    delete next.testsStale;
   }
+  return next;
+}
+
+export function reduce(s: Session, a: Action): Session {
+  if (!allowed(s).includes(a.type)) return blocked(s, a.type, a.at);
 
   switch (a.type) {
     case "SUBMIT_IDEA": {
@@ -242,7 +263,9 @@ export function reduce(s: Session, a: Action): Session {
         log: say(s, a.at, "requester", `Edited ${a.key}: ${value}`, "edit"),
       };
       // Only the interview can finish; at the blueprint an edit would otherwise jump to scope.
-      return s.step === "interview" ? maybeFinish(next, a.at) : next;
+      if (s.step === "interview") return maybeFinish(next, a.at);
+      // At the blueprint the next run re-drafts from the edit; an existing run stays, shown stale.
+      return { ...clearDrafted(next, false), ...(s.run ? { testsStale: true } : {}) };
     }
 
     case "RESOLVE_PUSHBACK": {
@@ -275,10 +298,22 @@ export function reduce(s: Session, a: Action): Session {
         ? `est. ${formatDollars(est.monthlyDollars)}/month for ${knobs.studentsPerMonth.toLocaleString("en-US")} students × ${knobs.convsPerStudent} conversations (list prices ${est.pricesAsOf})`
         : "no price on file for this model, so no estimate";
       return {
-        ...s, step: "tests", scope: a.scope, knobs, model: { role: a.role, name: a.model }, estimate: est,
+        ...clearDrafted(s, true), step: "tests", scope: a.scope, knobs, model: { role: a.role, name: a.model }, estimate: est,
         log: say(s, a.at, "requester", `Scope: ${sc.label} (risk ${sc.risk}) on ${a.price?.name ?? a.model}; ${cost}.`, "scope"),
       };
     }
+
+    case "TESTS_RUN": {
+      const [cheap, capable] = (["cheap", "capable"] as const).map((r) => a.run.columns.find((c) => c.role === r)?.source ?? r);
+      return {
+        ...s, run: a.run, draft: a.draft, tests: a.tests, testsStale: false,
+        log: say(s, a.at, "tool",
+          `Ran ${a.tests.length} tests on ${cheap} and ${capable}${a.run.offline ? " (offline script)" : ""}: ${a.run.headline}`, "tests"),
+      };
+    }
+
+    case "TESTS_FAILED":
+      return { ...s, log: say(s, a.at, "tool", `Test run failed: ${a.message}`, "tests") };
 
     case "CONTINUE_TO_BLUEPRINT":
       return {

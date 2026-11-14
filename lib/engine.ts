@@ -5,14 +5,16 @@
 import { randomUUID } from "node:crypto";
 import { ReviewActionSchema, type ClientAction, type ReviewResponse } from "./api";
 import { buildBlueprint } from "./blueprint";
-import { allowed, reduce, type Action } from "./journey";
+import { allowed, blocked, reduce, type Action } from "./journey";
 import { editFlags, gate } from "./dataRules";
 import { interviewTurn } from "./interviewer";
 import { loadKnowledge } from "./knowledge";
 import { provider } from "./llm";
 import {
-  findSessionIdByReviewId, getBlueprint, getRounds, getSession, saveReviewEvent, saveSession, saveSubmission,
+  deleteRuns, findSessionIdByReviewId, getBlueprint, getRounds, getSession, saveReviewEvent, saveRunAndSession, saveSession, saveSubmission,
 } from "./store";
+import { runTests } from "./testRun";
+import { refOf } from "./testSummary";
 import { cleanKnobs, priceFor, type ModelRole, type Price } from "./scoper";
 import type { Blueprint, KnowledgeRef, Level, ReviewView, Session, SlotKey } from "./types";
 
@@ -93,9 +95,35 @@ export async function startSession(idea: string): Promise<EngineResult> {
   return withBlueprint(await advance(s, undefined)); // the idea answers no slot
 }
 
+/**
+ * Run the tests (plan-2b BE-10). The full run and the session are saved together. A draft or
+ * generation error saves no run: the session gets a "Test run failed" line and the error is returned.
+ */
+async function runTestsFor(s: Session): Promise<EngineResult> {
+  if (!allowed(s).includes("TESTS_RUN")) {
+    const next = blocked(s, "TESTS_RUN", now());
+    saveSession(next);
+    return { session: next };
+  }
+  try {
+    const { run, draft, tests } = await runTests(s);
+    const next = reduce(s, { type: "TESTS_RUN", run: refOf(run, tests), draft, tests, at: now() });
+    saveRunAndSession(next, run);
+    return { session: next };
+  } catch (e) {
+    console.error("[tests]", e);
+    const message = e instanceof Error ? e.message : String(e);
+    const next = reduce(s, { type: "TESTS_FAILED", message, at: now() });
+    saveSession(next);
+    return { session: next, error: message };
+  }
+}
+
 export async function act(id: string, a: ClientAction): Promise<EngineResult | undefined> {
   const s = getSession(id);
   if (!s) return undefined;
+  if (a.type === "run_tests") return withBlueprint(await runTestsFor(s));
+  if (a.type === "reset" && allowed(s).includes("RESET")) deleteRuns(s.id);
 
   const at = now();
   const action: Action | undefined =

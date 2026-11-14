@@ -103,6 +103,8 @@ test("test_runs round-trip; getRuns is oldest first; deleteRuns removes only tha
   const a = { ...fakeTestRun(), id: "run-a", at: "2026-11-12T01:00:00.000Z" };
   const b = { ...fakeTestRun(), id: "run-b", at: "2026-11-12T02:00:00.000Z" };
   const other = { ...fakeTestRun(), id: "run-x" };
+  saveSession(initial("s1", at));
+  saveSession(initial("s2", at));
   saveRun("s1", b);
   saveRun("s1", a);
   saveRun("s2", other);
@@ -118,6 +120,7 @@ test("test_runs records offline and evidence: an offline run is never evidence; 
   const offline = { ...fakeTestRun(), id: "off" };
   const model = { ...offline, id: "model", offline: false, columns: offline.columns.map((c) => ({ ...c, source: "claude-sonnet-5" })),
     verdicts: offline.verdicts.map((v) => ({ ...v, source: "claude-sonnet-5" })) };
+  saveSession(initial("s1", at));
   saveRun("s1", offline);
   saveRun("s1", model);
   const rows = openDb().prepare("SELECT run_id, offline, evidence FROM test_runs ORDER BY run_id").all();

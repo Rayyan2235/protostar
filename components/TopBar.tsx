@@ -1,6 +1,10 @@
 import type { ReactNode } from "react";
+import { StatusStrip } from "./StatusStrip";
 
-/** App-shell top bar (KILN-AGENT §6): paper-raised with a hairline; product name in the display face. */
+/**
+ * App-shell top bar (KILN-AGENT §6): paper-raised with a hairline; product name in the display face.
+ * Holds the StatusStrip, the one polite region for transient action results (K6b).
+ */
 export function TopBar({ title, subtitle, children }: { title: string; subtitle?: string; children?: ReactNode }) {
   return (
     <header className="border-b border-hairline bg-paper-raised">
@@ -9,7 +13,10 @@ export function TopBar({ title, subtitle, children }: { title: string; subtitle?
           <p className="font-display text-xl font-semibold text-ink">{title}</p>
           {subtitle && <p className="label text-ink-muted">{subtitle}</p>}
         </div>
-        {children && <div className="flex flex-wrap items-center gap-(--space-2)">{children}</div>}
+        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-(--space-2)">
+          <StatusStrip />
+          {children}
+        </div>
       </div>
     </header>
   );

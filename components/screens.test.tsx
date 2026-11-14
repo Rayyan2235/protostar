@@ -120,12 +120,13 @@ test("data levels show the word Level, not a bare code", () => {
   assert.doesNotMatch(html, /title="/);
 });
 
-test("ExportBar has three outline buttons and no pill", () => {
+test("ExportBar has three outline buttons, no filled primary, no live region of its own (K6b: the StatusStrip speaks)", () => {
   const html = renderToStaticMarkup(<ExportBar blueprint={bp()} />);
   assert.equal(count(html, "<button"), 3);
   assert.equal(count(html, 'data-chip="arrow"'), 0);
   assert.match(html, /Download Markdown/);
-  assert.match(html, /role="status"/);
+  assert.doesNotMatch(html, /role="status"|aria-live/);
+  assert.match(html, /aria-describedby="ai-studio-note"/);
 });
 
 test("ModeBadge says the mode in words; live models get the live dot", () => {

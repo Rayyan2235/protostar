@@ -7,6 +7,7 @@ import { BlueprintView, ExportBar } from "@/components/blueprint";
 import { Button } from "@/components/kiln/Button";
 import { EmptyState } from "@/components/EmptyState";
 import { ModeBadge } from "@/components/ModeBadge";
+import { StatusProvider } from "@/components/StatusStrip";
 import { Notice } from "@/components/Notice";
 import { TextField } from "@/components/TextField";
 import { TopBar } from "@/components/TopBar";
@@ -33,14 +34,14 @@ const OUTCOME: Record<ReviewRound["status"], string> = {
 /** Page frame shared by every state: TopBar, then content at the app-shell width. */
 function Shell({ mode, children }: { mode?: string; children: ReactNode }) {
   return (
-    <>
+    <StatusProvider>
       <TopBar title="Protostar" subtitle="Blueprint review · prototype">
         {mode && <ModeBadge mode={mode} />}
       </TopBar>
       <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-(--space-5) px-(--space-3) py-(--space-5) sm:px-(--space-6)">
         {children}
       </main>
-    </>
+    </StatusProvider>
   );
 }
 

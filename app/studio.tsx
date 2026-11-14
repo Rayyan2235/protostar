@@ -1,18 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { SLOT_KEYS, SLOT_LABELS, type Blueprint, type Decision, type PushbackChoice, type Session, type SessionReview, type SlotKey } from "@/lib/types";
 import type { Catalog } from "@/lib/engine";
 import { reviewPath, type ClientAction, type SessionResponse } from "@/lib/api";
 import { SCENARIO } from "@/lib/scenario";
 import { BlueprintView, ExportBar, SourceItem } from "@/components/blueprint";
 import { Button } from "@/components/kiln/Button";
+import { CopyButton } from "@/components/CopyButton";
 import { DecisionLog } from "@/components/DecisionLog";
 import { EmptyState } from "@/components/EmptyState";
 import { FlowRail } from "@/components/FlowRail";
 import { KeyHint, submitOnEnter } from "@/components/Kbd";
 import { ModeBadge } from "@/components/ModeBadge";
 import { Notice } from "@/components/Notice";
+import { StatusProvider, useStatus } from "@/components/StatusStrip";
 import { TextField } from "@/components/TextField";
 import { TopBar } from "@/components/TopBar";
 import { ScopePicker, ScopeSummary } from "./scope";
@@ -57,7 +59,16 @@ async function call(path: string, body?: unknown): Promise<SessionResponse> {
  * The requester's studio. `initialId` comes from ?s= (read on the server), so a shared link renders
  * a busy state instead of flashing the idea form. `pending` is the Suspense fallback while the link is read.
  */
-export default function Studio({ initialId, pending }: { initialId?: string; pending?: boolean }) {
+export default function Studio(props: { initialId?: string; pending?: boolean }) {
+  return (
+    <StatusProvider>
+      <StudioShell {...props} />
+    </StatusProvider>
+  );
+}
+
+function StudioShell({ initialId, pending }: { initialId?: string; pending?: boolean }) {
+  const { say } = useStatus();
   const [session, setSession] = useState<Session>();
   const [blueprint, setBlueprint] = useState<Blueprint>();
   const [mode, setMode] = useState<string>();
@@ -126,21 +137,30 @@ export default function Studio({ initialId, pending }: { initialId?: string; pen
     }
   });
 
-  const run = async (p: Promise<SessionResponse>, focus?: string) => {
+  const run = async (p: Promise<SessionResponse>, focus?: string): Promise<SessionResponse | undefined> => {
     setBusy(true);
     try {
       const r = await p;
       apply(r);
       if (r.session) focusNext.current = { sel: focus ?? nextFocus(r.session) };
+      return r;
     } catch {
       setError("Network error. Try again.");
+      return undefined;
     } finally {
       setBusy(false);
     }
   };
 
   const start = (idea: string) => run(call("/api/sessions", { idea })).then(() => setText(""));
-  const send = (a: ClientAction, focus?: string) => session && run(call(`/api/sessions/${session.id}`, a), focus);
+  const send = async (a: ClientAction, focus?: string) => {
+    if (!session) return;
+    const r = await run(call(`/api/sessions/${session.id}`, a), focus);
+    // Transient results go to the StatusStrip (closed list); errors stay in place as alerts.
+    if (!r?.session || r.error) return;
+    if (a.type === "edit") say("Saved");
+    if (a.type === "submit" && r.session.review) say(`Sent v${r.session.review.version} to the reviewer`);
+  };
   const answer = (value: string) => {
     if (!value.trim()) return;
     setText("");
@@ -255,7 +275,7 @@ export function TestsStep({ busy, send }: { busy: boolean; send: (a: ClientActio
 }
 
 /** Main panel for the blueprint, review and done steps. */
-function BlueprintStep({ session, blueprint, busy, error, send, onNewIdea }: {
+export function BlueprintStep({ session, blueprint, busy, error, send, onNewIdea }: {
   session: Session; blueprint?: Blueprint; busy: boolean; error?: string;
   send: (a: ClientAction) => unknown; onNewIdea: () => void;
 }) {
@@ -296,17 +316,14 @@ function BlueprintStep({ session, blueprint, busy, error, send, onNewIdea }: {
   );
 }
 
-function ReviewCard({ review: r }: { review: SessionReview }) {
-  const [copied, setCopied] = useState("");
-  const link = `${window.location.origin}${reviewPath(r.reviewId)}`;
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(link);
-      setCopied("Link copied.");
-    } catch {
-      setCopied("Couldn't copy. Select the link and copy it.");
-    }
-  };
+const noSubscribe = () => () => {};
+/** The page origin; "" in the server markup (no window during render). */
+function useOrigin() {
+  return useSyncExternalStore(noSubscribe, () => window.location.origin, () => "");
+}
+
+export function ReviewCard({ review: r }: { review: SessionReview }) {
+  const link = `${useOrigin()}${reviewPath(r.reviewId)}`;
   return (
     <section aria-labelledby="review-waiting" className="flex flex-col gap-(--space-2) rounded-(--radius-md) border border-hairline bg-paper-raised p-(--space-3)">
       <h2 id="review-waiting" className="title text-accent">v{r.version} submitted · waiting for review</h2>
@@ -316,9 +333,9 @@ function ReviewCard({ review: r }: { review: SessionReview }) {
       <div className="flex flex-wrap items-end gap-(--space-2)">
         <TextField id="review-link" label="Reviewer link" hideLabel readOnly value={link} className="min-w-0 flex-1"
           onFocus={(e) => e.currentTarget.select()} />
-        <Button id="copy-link" kind="outline" onClick={copy}>Copy link</Button>
+        <CopyButton id="copy-link" label="Copy link" text={() => link} message="Copied the review link"
+          failText="Couldn't copy. Select the text and copy it yourself." />
       </div>
-      <span role="status" className="label text-ink-soft">{copied}</span>
     </section>
   );
 }

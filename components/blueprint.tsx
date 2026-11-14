@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import type { Blueprint, BlueprintSlot, Level, Source } from "@/lib/types";
 import { aiStudioText, blueprintJson, blueprintMarkdown, exportFileName } from "@/lib/export";
 import { formatDollars } from "@/lib/scoper";
 import { Button } from "@/components/kiln/Button";
+import { CopyButton } from "@/components/CopyButton";
+import { useStatus } from "@/components/StatusStrip";
 import { SpecSheet } from "@/components/kiln/SpecSheet";
 import { Tag } from "@/components/kiln/Tag";
 import { DecisionLog } from "@/components/DecisionLog";
@@ -194,32 +196,26 @@ function download(text: string, name: string, type: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-/** Markdown and JSON downloads, plus a copy-paste block for AI Studio. Outline buttons: the screen's pill is elsewhere. */
+/**
+ * Markdown and JSON downloads, plus a copy-paste block for AI Studio. All outline: the screen's one
+ * filled primary is elsewhere. Results are announced by the StatusStrip; no live region here.
+ */
 export function ExportBar({ blueprint: bp }: { blueprint: Blueprint }) {
-  const [status, setStatus] = useState("");
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(aiStudioText(bp));
-      setStatus("Copied. Field names are provisional.");
-    } catch {
-      setStatus("Couldn't copy. Use Download Markdown instead.");
-    }
+  const { say } = useStatus();
+  const save = (ext: "md" | "json") => {
+    const name = exportFileName(bp, ext);
+    if (ext === "md") download(blueprintMarkdown(bp), name, "text/markdown");
+    else download(blueprintJson(bp), name, "application/json");
+    say(`Downloaded ${name}`);
   };
 
   return (
     <div className="flex flex-wrap items-center gap-(--space-2)">
-      <Button kind="outline" onClick={() => download(blueprintMarkdown(bp), exportFileName(bp, "md"), "text/markdown")}>
-        Download Markdown
-      </Button>
-      <Button kind="outline" onClick={() => download(blueprintJson(bp), exportFileName(bp, "json"), "application/json")}>
-        Download JSON
-      </Button>
-      <Button kind="outline" onClick={copy} aria-describedby="ai-studio-note">
-        Copy for AI Studio
-      </Button>
+      <Button kind="outline" onClick={() => save("md")}>Download Markdown</Button>
+      <Button kind="outline" onClick={() => save("json")}>Download JSON</Button>
+      <CopyButton label="Copy for AI Studio" text={() => aiStudioText(bp)} message="Copied for AI Studio" describedBy="ai-studio-note"
+        failText="Couldn't copy. Use Download Markdown instead." />
       <span id="ai-studio-note" className="label text-ink-muted">AI Studio field names provisional</span>
-      <span role="status" className="small w-full font-normal text-ink-soft">{status}</span>
     </div>
   );
 }

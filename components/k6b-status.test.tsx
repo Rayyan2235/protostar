@@ -173,7 +173,7 @@ test("runCopy: a clipboard rejection reports failed and says nothing", async () 
   const r = await runCopy({ writeText: async () => { throw new Error("denied"); } }, "text", "Copied", (t) => said.push(t));
   assert.equal(r, "failed");
   assert.deepEqual(said, []);
-  assert.equal(await runCopy(undefined, "text", "Copied", (t) => said.push(t)), "failed", "no clipboard API");
+  assert.equal(await runCopy(undefined, "text", "Copied", () => assert.fail("said on failure")), "failed", "no clipboard API");
 });
 
 test("copy button: the name never changes; the glyph is aria-hidden; the check shows only after a copy", () => {

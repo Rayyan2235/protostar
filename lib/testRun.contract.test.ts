@@ -5,7 +5,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fakeTestRun, fakeTests } from "./testRun.fake";
+import { danaAtTests } from "./dana.fixture";
 import { OFFLINE_SOURCE } from "./schemas";
+import { runTests } from "./testRun";
+import { refOf, summarize } from "./testSummary";
 import type { Test, TestRun } from "./types";
 
 const MUST_NOT = ["no-admission-promise", "no-record-request", "numbers-grounded", "gpa-matches-source"];
@@ -31,7 +34,10 @@ export function runInvariants(run: TestRun, tests: Test[]): string[] {
     if (v.by === "answer-error" && (v.pass || v.answer !== "")) bad.push(`${at}: answer-error must fail with no answer`);
     if (v.by === "judge-error" && v.pass) bad.push(`${at}: judge-error must fail`);
     if (!tests.some((t) => t.id === v.testId)) bad.push(`${at}: unknown test`);
+    if (v.by !== "answer-error" && !v.answer.trim()) bad.push(`${at}: ${v.by} verdict with no answer`);
   }
+  if (!run.id.trim()) bad.push("empty run id");
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(run.at) || Number.isNaN(Date.parse(run.at))) bad.push(`at ${run.at} is not ISO-8601`);
   return bad;
 }
 
@@ -74,4 +80,36 @@ test("fake run: an unavailable column has an answer-error on every verdict, the 
 test("fake run with a subset of tests covers only those tests", () => {
   const tests = fakeTests().slice(0, 3);
   assert.deepEqual(runInvariants(fakeTestRun(tests), tests), []);
+});
+
+test("invariants catch an empty id, a non-ISO time and a judged verdict with no answer", () => {
+  const tests = fakeTests().slice(0, 1);
+  const run = fakeTestRun(tests);
+  const broken: TestRun = { ...run, id: " ", at: "yesterday", verdicts: run.verdicts.map((v, i) => (i === 0 ? { ...v, answer: "" } : v)) };
+  assert.deepEqual(runInvariants(broken, tests), ["test 1 cheap: judge verdict with no answer", "empty run id", "at yesterday is not ISO-8601"]);
+});
+
+// BE-10: the same contract against the real offline run.
+process.env.LLM_PROVIDER = "offline";
+
+test("offline runTests: invariants hold, one verdict per test × role, sources match offline", async () => {
+  const { run, tests } = await runTests(danaAtTests());
+  assert.deepEqual(runInvariants(run, tests), []);
+  assert.equal(run.offline, true);
+  assert.ok(run.verdicts.every((v) => v.source === OFFLINE_SOURCE));
+});
+
+test("offline runTests: summarize totals add up and the headline names both columns (pinned)", async () => {
+  const s = danaAtTests();
+  const { run, tests } = await runTests(s);
+  const ref = refOf(run, tests);
+  const sum = summarize({ ...s, run: ref });
+  assert.ok(sum.status === "run");
+  if (sum.status !== "run") return;
+  for (const c of sum.columns) {
+    assert.equal(c.total, tests.length);
+    assert.equal(c.passed + sum.failures.filter((f) => f.role === c.role).length, c.total, c.role);
+  }
+  assert.deepEqual(sum.failures.map((f) => f.reason), ["Doesn't state the 3.50 minimum from the bulletin."]);
+  assert.equal(ref.headline, "Capable passed all 13. Cheap failed 1: doesn't state the 3.50 minimum from the bulletin.");
 });

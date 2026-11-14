@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import * as journey from "./journey";
 import { allowed, initial, levelLabel, missingSlots, nextQuestion, reduce, MAX_QUESTIONS, type Action } from "./journey";
 import { SCENARIO } from "./scenario";
-import { SLOT_KEYS, type Decision, type ReviewDecision, type Session, type SlotKey, type Source } from "./types";
+import { SLOT_KEYS, type Decision, type Draft, type ReviewDecision, type RunRef, type Session, type SlotKey, type Source, type Test } from "./types";
 
 const at = "2026-11-10T00:00:00.000Z";
 const run = (s: Session, ...actions: Action[]) => actions.reduce(reduce, s);
@@ -224,8 +224,8 @@ const line = (d: Decision) => ({ who: d.who, what: d.what, kind: d.kind });
 const blockedLines = (s: Session) => s.log.filter((d) => d.kind === "blocked").length;
 
 test("allowed actions per step: tests, blueprint, review, done", () => {
-  assert.deepEqual(allowed(atTests()), ["CONTINUE_TO_BLUEPRINT", "REOPEN_SCOPE", "RESET"]);
-  assert.deepEqual(allowed(atBlueprint()), ["EDIT_SLOT", "REOPEN_SCOPE", "SUBMIT_FOR_REVIEW", "RESET"]);
+  assert.deepEqual(allowed(atTests()), ["TESTS_RUN", "TESTS_FAILED", "CONTINUE_TO_BLUEPRINT", "REOPEN_SCOPE", "RESET"]);
+  assert.deepEqual(allowed(atBlueprint()), ["EDIT_SLOT", "REOPEN_SCOPE", "SUBMIT_FOR_REVIEW", "TESTS_RUN", "TESTS_FAILED", "RESET"]);
   const review = submit(atBlueprint());
   assert.deepEqual(allowed(review), ["REVIEW_OPENED", "REVIEW_DECISION"]);
   assert.deepEqual(allowed(decide(review, "approved")), []);
@@ -387,4 +387,89 @@ test("the self-report source is not added next to a kept source with the same na
   const s = run(started(), turn({ sources: [lookalike, { ...audit, ruleId: "degree-audit" }] }), { type: "RESOLVE_PUSHBACK", choice: "selfreport", at });
   const norm = (n: string) => n.trim().toLowerCase();
   assert.equal(s.sources.filter((x) => norm(x.name) === norm(self.name)).length, 1);
+});
+
+// --- Phase 2b: test runs (BE-10, contract 9.5) ---------------------------------------------
+
+const draft2b: Draft = { instructions: "Answer from the bulletin.", source: "offline-script", at, examples: [] };
+const gen = (id: number, from: Test["from"] = "top"): Test =>
+  ({ id, prompt: `Question ${id}?`, mustInclude: [], mustNot: [], from, checks: ["no-admission-promise"] });
+const mineTest: Test = { ...gen(3, "requester"), reference: "My answer." };
+const runRef: RunRef = {
+  id: "run-1", at, offline: true,
+  columns: [
+    { role: "cheap", source: "offline-script", passed: 2, total: 3, unavailable: false },
+    { role: "capable", source: "offline-script", passed: 3, total: 3, unavailable: false },
+  ],
+  failures: [{ testId: 1, prompt: "Question 1?", role: "cheap", by: "check", reason: "Doesn't state the 3.50 minimum from the bulletin." }],
+  evidence: false,
+  headline: "Capable passed all 3. Cheap failed 1: doesn't state the 3.50 minimum from the bulletin.",
+};
+const ran: Action = { type: "TESTS_RUN", run: runRef, draft: draft2b, tests: [gen(1), gen(2), mineTest], at };
+
+test("TESTS_RUN at tests keeps the run, draft and tests and logs the headline", () => {
+  const s = reduce(atTests(), ran);
+  assert.equal(s.step, "tests");
+  assert.deepEqual([s.run, s.draft, s.tests], [runRef, draft2b, [gen(1), gen(2), mineTest]]);
+  assert.deepEqual(line(last(s)), {
+    who: "tool", kind: "tests",
+    what: `Ran 3 tests on offline-script and offline-script (offline script): ${runRef.headline}`,
+  });
+});
+
+test("TESTS_RUN names the model sources and drops the offline note for a model run", () => {
+  const model: RunRef = { ...runRef, offline: false, columns: [{ ...runRef.columns[0], source: "claude-haiku-4-5" }, { ...runRef.columns[1], source: "claude-sonnet-5" }] };
+  const s = reduce(atTests(), { ...ran, run: model } as Action);
+  assert.equal(last(s).what, `Ran 3 tests on claude-haiku-4-5 and claude-sonnet-5: ${runRef.headline}`);
+});
+
+test("TESTS_RUN at the blueprint clears testsStale; after submit it is blocked", () => {
+  const s = reduce({ ...atBlueprint(), testsStale: true, run: runRef }, ran);
+  assert.equal(s.testsStale, false);
+  assert.equal(s.step, "blueprint");
+  const review = submit(atBlueprint());
+  const blocked = reduce(review, ran);
+  assert.equal(blocked.run, undefined);
+  assert.equal(last(blocked).kind, "blocked");
+});
+
+test("TESTS_RUN and TESTS_FAILED are blocked at the interview", () => {
+  const s = started();
+  for (const a of [ran, { type: "TESTS_FAILED", message: "x", at } as Action]) {
+    const t = reduce(s, a);
+    assert.equal(t.run, undefined);
+    assert.equal(last(t).kind, "blocked");
+  }
+});
+
+test("TESTS_FAILED logs the message and changes nothing else", () => {
+  const s = reduce(atTests(), ran);
+  const t = reduce(s, { type: "TESTS_FAILED", message: "No model configured", at });
+  assert.deepEqual({ ...t, log: s.log }, s);
+  assert.deepEqual(line(last(t)), { who: "tool", kind: "tests", what: "Test run failed: No model configured" });
+});
+
+test("CHOOSE_SCOPE clears the draft, generated tests and run; requester tests stay", () => {
+  const s = reduce(reduce(reduce(atTests(), ran), { type: "REOPEN_SCOPE", at }), choose("faq"));
+  assert.equal(s.draft, undefined);
+  assert.equal(s.run, undefined);
+  assert.deepEqual(s.tests, [mineTest]);
+  assert.equal(s.testsStale, undefined);
+});
+
+test("EDIT_SLOT at the blueprint clears the draft and generated tests and marks a run stale", () => {
+  const withRun = reduce(reduce(atTests(), ran), { type: "CONTINUE_TO_BLUEPRINT", at });
+  const s = reduce(withRun, edit("never", "Promise admission or quote fees"));
+  assert.equal(s.draft, undefined);
+  assert.deepEqual(s.tests, [mineTest]);
+  assert.equal(s.testsStale, true);
+  assert.deepEqual(s.run, runRef, "the run stays, shown stale");
+});
+
+test("EDIT_SLOT at the blueprint without a run doesn't set testsStale; a refused edit changes nothing", () => {
+  const s = reduce(atBlueprint(), edit("never", "Promise admission or quote fees"));
+  assert.equal(s.testsStale, undefined);
+  const withRun = reduce(reduce(atTests(), ran), { type: "CONTINUE_TO_BLUEPRINT", at });
+  const refused = reduce(withRun, edit("never", "Paste the degree audit", [audit]));
+  assert.deepEqual([refused.draft, refused.tests, refused.testsStale], [withRun.draft, withRun.tests, withRun.testsStale]);
 });

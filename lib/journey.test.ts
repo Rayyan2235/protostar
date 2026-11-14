@@ -381,6 +381,47 @@ test("a second flag resolved with (a) again keeps one self-report source", () =>
   assert.equal(new Set(names).size, names.length, "source names are unique");
 });
 
+// BE-12 (plan-4 §5): a second Level 3–4 flag keeps the earlier data choice.
+const audit3: Source = { ...audit, ruleId: "degree-audit" };
+const transcripts: Source = { name: "Students upload transcripts", level: 3, decidedBy: "rule", reason: "FERPA", ruleId: "transcript" };
+const resolve = (choice: "selfreport" | "route" | "keep"): Action => ({ type: "RESOLVE_PUSHBACK", choice, at });
+const reflagged = () =>
+  run(started(), turn({ sources: [bulletin, audit3] }), resolve("selfreport"), answer("x"), turn({ sources: [transcripts] }));
+
+test("a second flag keeps the first choice while it blocks; resolving appends to choices", () => {
+  const first = run(started(), turn({ sources: [bulletin, audit3] }), resolve("selfreport"));
+  assert.deepEqual([first.pushback?.choice, first.pushback?.choices], ["selfreport", ["selfreport"]]);
+
+  const flagged = reflagged();
+  assert.equal(flagged.pushback?.blocking, true);
+  assert.equal(flagged.pushback?.choice, "selfreport", "the earlier choice survives the re-flag");
+  assert.deepEqual(flagged.pushback?.choices, ["selfreport"]);
+  assert.deepEqual(flagged.pushback?.flagged, [transcripts.name], "the card names only the new source");
+
+  const s = reduce(flagged, resolve("route"));
+  assert.equal(s.pushback?.blocking, false);
+  assert.equal(s.pushback?.choice, "route", "choice is the latest");
+  assert.deepEqual(s.pushback?.choices, ["selfreport", "route"]);
+  assert.deepEqual(s.pushback?.flaggedRules, ["degree-audit", "transcript"]);
+  assert.deepEqual(s.pushback?.flaggedSources?.map((x) => x.name), [audit3.name, transcripts.name]);
+});
+
+test("the same choice twice is kept once in choices", () => {
+  const s = reduce(reflagged(), resolve("selfreport"));
+  assert.deepEqual(s.pushback?.choices, ["selfreport"]);
+  assert.equal(s.pushback?.choice, "selfreport");
+});
+
+test("keep anyway on the second card doesn't advance and leaves choices unchanged", () => {
+  const flagged = reflagged();
+  const s = reduce(flagged, resolve("keep"));
+  assert.equal(s.pushback?.blocking, true);
+  assert.equal(s.step, flagged.step);
+  assert.deepEqual(s.pushback?.choices, ["selfreport"]);
+  assert.equal(s.pushback?.choice, "selfreport");
+  assert.equal(s.pushback?.attempts, 1);
+});
+
 test("the self-report source is not added next to a kept source with the same name in another case or spacing", () => {
   const self = SCENARIO.pushback.selfReportSource;
   const lookalike: Source = { ...self, name: `${self.name.toUpperCase()} ` };

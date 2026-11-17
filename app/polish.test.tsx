@@ -31,10 +31,11 @@ const blocking = { blocking: true, flagged: ["Degree audits"], flaggedRules: [],
 
 // Browser walk: a StatusStrip message pushed "New idea" to a second row at 1024px,
 // and on a phone the subtitle wrapped, so the bar was three rows tall.
-test("top bar stays one row: no wrapping, the subtitle hides on phones, actions never shrink", () => {
+test("top bar stays one row: no wrapping, the subtitle only from xl up, actions never shrink", () => {
   const html = renderToStaticMarkup(<TopBar title="Protostar" subtitle="Agent spec builder · prototype"><span id="action">New idea</span></TopBar>);
   assert.doesNotMatch(html, /flex-wrap/, "nothing in the bar wraps");
-  assert.match(html, /<p class="[^"]*\bhidden\b[^"]*\bsm:block\b[^"]*"[^>]*>Agent spec builder · prototype<\/p>/);
+  // At 1024px the subtitle squeezed "Sent v1 to the reviewer" to "Sent v1 to the rev…".
+  assert.match(html, /<p class="[^"]*\bhidden\b[^"]*\bxl:block\b[^"]*"[^>]*>Agent spec builder · prototype<\/p>/);
   assert.match(html, /<div class="[^"]*\bshrink-0\b[^"]*"[^>]*><span id="action">/, "actions keep their width; the strip truncates instead");
 });
 

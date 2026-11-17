@@ -218,7 +218,7 @@ function StudioShell({ initialId, pending }: { initialId?: string; pending?: boo
                       <Composer session={session} busy={busy} text={text} setText={setText} onAnswer={answer} onResolve={(choice) => send({ type: "resolve", choice })} />
                     )}
                   </div>
-                  <Ledger log={session.log} />
+                  <Ledger log={session.log} collapsed={session.step !== "interview"} />
                 </>
               )}
             </section>
@@ -382,20 +382,35 @@ function ledgerRows(log: Decision[]): LedgerRow[] {
  * panel is the only editor, so after an edit the two can differ; the heading says so.
  * No live region: focus moving to the new question announces the change.
  */
-export function Ledger({ log }: { log: Decision[] }) {
+export function Ledger({ log, collapsed = false }: { log: Decision[]; collapsed?: boolean }) {
   const rows = ledgerRows(log);
   if (!rows.length) return null;
+  const list = (
+    <ol>
+      {rows.map((r, i) => (
+        <li key={i} className="border-b border-hairline py-(--space-2) last:border-b-0">
+          <p className="small font-normal text-ink-muted">{r.q}</p>
+          {!r.tool && <p className="body mt-(--space-1) whitespace-pre-wrap text-ink">{r.a}</p>}
+        </li>
+      ))}
+    </ol>
+  );
+  // After the interview the history is reference, not the task: one closed line, opened on demand.
+  if (collapsed) {
+    const answers = rows.filter((r) => !r.tool).length;
+    return (
+      <details className="border-t border-hairline pt-(--space-3)">
+        <summary className="label w-fit cursor-pointer text-ink-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-accent">
+          Your answers, as given ({answers})
+        </summary>
+        <div className="mt-(--space-2)">{list}</div>
+      </details>
+    );
+  }
   return (
     <section aria-labelledby="ledger-heading" className="flex flex-col gap-(--space-2)">
       <h2 id="ledger-heading" className="label text-ink-muted">Your answers, as given</h2>
-      <ol>
-        {rows.map((r, i) => (
-          <li key={i} className="border-b border-hairline py-(--space-2) last:border-b-0">
-            <p className="small font-normal text-ink-muted">{r.q}</p>
-            {!r.tool && <p className="body mt-(--space-1) whitespace-pre-wrap text-ink">{r.a}</p>}
-          </li>
-        ))}
-      </ol>
+      {list}
     </section>
   );
 }
@@ -407,10 +422,22 @@ export function Composer({ session, busy, text, setText, onAnswer, onResolve }: 
 }) {
   if (session.pushback?.blocking) return <PushbackCard session={session} busy={busy} onResolve={onResolve} />;
   if (session.step === "scope") return <p className="small font-normal text-ink-muted">Loading scope options…</p>;
+  const n = session.log.filter((d) => d.kind === "question").length + 1;
+  // While the next turn loads, the question just answered stays put (dimmed) so the screen doesn't empty.
+  if (busy && session.question) {
+    return (
+      <div aria-busy="true" className="flex flex-col gap-(--space-3)">
+        <div className="flex flex-col gap-(--space-1)">
+          <p className="label text-ink-muted">Question {n}</p>
+          <h2 className="heading-2 text-ink-muted">{session.question.ask}</h2>
+        </div>
+        <p className="small font-normal text-ink-muted">Thinking…</p>
+      </div>
+    );
+  }
   if (busy || !session.question) return <p className="small font-normal text-ink-muted">{busy ? "Thinking…" : "Waiting for the interviewer."}</p>;
 
   const q = session.question;
-  const n = session.log.filter((d) => d.kind === "question").length + 1;
   return (
     <form onSubmit={(e) => { e.preventDefault(); onAnswer(text); }} className="flex flex-col gap-(--space-3)">
       <div className="flex flex-col gap-(--space-1)">
@@ -444,15 +471,24 @@ export function PushbackCard({ session, busy, onResolve }: { session: Session; b
     <Notice tone="danger" title={`Hold on: this would use student records (${names})`}
       actions={<Button kind="link" danger disabled={busy} onClick={() => onResolve("keep")}>Keep it anyway</Button>}>
       <p>That counts as Penn State Level 3–4 data (FERPA). AI Studio agents may only use Level 1–2 data. How should the agent work instead?</p>
-      <ul className="mt-(--space-3) flex flex-col gap-(--space-3)">
+      {/* Each way forward is one row you can click anywhere: the title is its name, the explanation its description. */}
+      <ul className="mt-(--space-3) flex flex-col border-y border-hairline">
         {pb.options.map((choice, i) => {
           const opt = SCENARIO.pushback.options[choice];
           return (
-            <li key={choice} className="flex flex-col items-start gap-(--space-1)">
-              <Button id={`pushback-${i}`} kind="outline" disabled={busy} onClick={() => onResolve(choice)} aria-describedby={`pushback-${i}-detail`}>
-                {opt.title}
-              </Button>
-              <span id={`pushback-${i}-detail`} className="text-ink-muted">{opt.detail}</span>
+            <li key={choice} className="border-b border-hairline last:border-b-0">
+              <button type="button" id={`pushback-${i}`} aria-labelledby={`pushback-${i}-title`} aria-describedby={`pushback-${i}-detail`}
+                disabled={busy} onClick={() => onResolve(choice)}
+                className="group flex min-h-[calc(var(--space-5)+var(--space-1))] w-full items-center justify-between gap-(--space-3) px-(--space-2) py-(--space-3) text-left transition-colors duration-(--dur-quick) ease-out hover:bg-paper-sunk focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-accent disabled:cursor-default disabled:text-ink-muted disabled:hover:bg-transparent motion-reduce:transition-none">
+                <span className="flex flex-col gap-(--space-1)">
+                  <span id={`pushback-${i}-title`} className="small font-semibold text-ink">{opt.title}</span>
+                  <span id={`pushback-${i}-detail`} className="small font-normal text-ink-muted">{opt.detail}</span>
+                </span>
+                <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16"
+                  className="shrink-0 text-ink-muted transition-transform duration-(--dur-quick) ease-out group-hover:translate-x-(--space-1) group-hover:text-ink motion-reduce:transition-none">
+                  <path d="M3 8h10M9 4l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.6" />
+                </svg>
+              </button>
             </li>
           );
         })}
@@ -519,7 +555,7 @@ export function SpecPanel({ session, busy, onEdit, initialEditing }: {
             <span className="font-semibold text-ink">Rule added by your choice:</span> {SCENARIO.pushback.options[session.pushback.choice].rule}
           </p>
         )}
-        <p className="label text-ink-muted">Levels: Penn State data classes. “rule” = decided by a fixed table; “model” = classified by AI because no rule matched.</p>
+        <p className="small font-normal text-ink-muted">Levels: Penn State data classes. “rule” = decided by a fixed table; “model” = classified by AI because no rule matched.</p>
       </section>
 
       {session?.scope && <ScopeSummary session={session} />}

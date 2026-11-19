@@ -14,6 +14,7 @@ import { Figure } from "@/components/Figure";
 import { FoldedSheet } from "@/components/FoldedSheet";
 import { SectionTabs } from "@/components/SectionTabs";
 import { Notice } from "@/components/Notice";
+import { InkMark } from "@/components/InkMark";
 
 type Audience = "requester" | "reviewer";
 
@@ -90,7 +91,8 @@ export function BlueprintView({ blueprint: bp, audience, status }: {
     <span className="flex flex-col gap-(--space-1) sm:items-end">
       <span>
         {scope.estimate
-          ? <>≈ <span className="font-semibold"><Figure value={scope.estimate.monthlyDollars} format={formatDollars} /></span></>
+          // The page's one ink mark: the number a reviewer signs off on.
+          ? <>≈ <InkMark kind="circle"><span className="font-semibold"><Figure value={scope.estimate.monthlyDollars} format={formatDollars} /></span></InkMark></>
           : "No list price on file for this model, so no estimate."}
       </span>
       <span className="text-ink-muted">{bp.costNote}</span>

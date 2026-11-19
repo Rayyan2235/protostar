@@ -19,6 +19,10 @@ import { StatusProvider, useStatus } from "@/components/StatusStrip";
 import { TextField } from "@/components/TextField";
 import { TopBar } from "@/components/TopBar";
 import { ScopePicker, ScopeSummary } from "./scope";
+import { InkMark } from "@/components/InkMark";
+import { gsap, kilnTiming, motionOk } from "@/components/motion/kiln";
+import { useLineReveal, useRiseIn } from "@/components/motion/reveal";
+import { foldFrom, foldInto } from "@/components/motion/fold";
 
 type ResolveChoice = PushbackChoice | "keep";
 
@@ -241,10 +245,13 @@ function StudioShell({ initialId, pending }: { initialId?: string; pending?: boo
 function StartScreen({ text, setText, busy, error, onStart }: {
   text: string; setText: (s: string) => void; busy: boolean; error?: string; onStart: (s: string) => void;
 }) {
+  // The screen's one loud moment: the statement rises in by lines, once.
+  const statement = useRef<HTMLHeadingElement>(null);
+  useLineReveal(statement, "start", "enter");
   return (
     <div className="grid gap-(--space-6) lg:grid-cols-12 lg:pt-(--space-5)">
       <form className="flex flex-col gap-(--space-4) lg:col-span-7" onSubmit={(e) => { e.preventDefault(); onStart(text); }}>
-        <h1 className="display text-ink">What do you keep answering <span className="text-ink-muted">over and over?</span></h1>
+        <h1 ref={statement} className="display text-ink">What do you keep answering <span className="text-ink-muted">over and over?</span></h1>
         <TextField id="idea" label="Describe the agent you wish existed, in one sentence." multiline autosize rows={3} maxLength={1000}
           value={text} onChange={setText} placeholder="e.g. Something that answers change-of-major questions"
           onKeyDown={submitOnEnter({ empty: !text.trim(), busy }, () => onStart(text))} />
@@ -384,11 +391,36 @@ function ledgerRows(log: Decision[]): LedgerRow[] {
  */
 export function Ledger({ log, collapsed = false }: { log: Decision[]; collapsed?: boolean }) {
   const rows = ledgerRows(log);
+  const list$ = useRef<HTMLOListElement>(null);
+  const body = useRef<HTMLDivElement>(null);
+  // A new "Data choice" row is where the resolved red card folds to (GSAP, see motion/fold.ts).
+  const choices = rows.filter((r) => r.q === "Data choice").length;
+  const seen = useRef(choices);
+  useEffect(() => {
+    if (choices > seen.current) foldInto(list$.current?.querySelector<HTMLElement>('[data-fold="data-choice"]') ?? null);
+    seen.current = choices;
+  }, [choices]);
   if (!rows.length) return null;
+
+  // Collapsed history opens and closes by height instead of jumping (reduced motion: native).
+  const onSummary = (e: { currentTarget: HTMLElement; preventDefault: () => void }) => {
+    const d = e.currentTarget.parentElement as HTMLDetailsElement | null;
+    const el = body.current;
+    if (!d || !el || !motionOk()) return;
+    const t = kilnTiming();
+    if (d.open) {
+      e.preventDefault();
+      gsap.to(el, { height: 0, autoAlpha: 0, duration: t.quick, ease: t.ease,
+        onComplete: () => { d.open = false; gsap.set(el, { clearProps: "height,opacity,visibility" }); } });
+    } else {
+      requestAnimationFrame(() => gsap.from(el, { height: 0, autoAlpha: 0, duration: t.quick, ease: t.ease, clearProps: "height,opacity,visibility" }));
+    }
+  };
+
   const list = (
-    <ol>
+    <ol ref={list$}>
       {rows.map((r, i) => (
-        <li key={i} className="border-b border-hairline py-(--space-2) last:border-b-0">
+        <li key={i} data-fold={r.q === "Data choice" ? "data-choice" : undefined} className="border-b border-hairline py-(--space-2) last:border-b-0">
           <p className="small font-normal text-ink-muted">{r.q}</p>
           {!r.tool && <p className="body mt-(--space-1) whitespace-pre-wrap text-ink">{r.a}</p>}
         </li>
@@ -400,10 +432,10 @@ export function Ledger({ log, collapsed = false }: { log: Decision[]; collapsed?
     const answers = rows.filter((r) => !r.tool).length;
     return (
       <details className="border-t border-hairline pt-(--space-3)">
-        <summary className="label w-fit cursor-pointer text-ink-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-accent">
+        <summary onClick={onSummary} className="label w-fit cursor-pointer text-ink-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-accent">
           Your answers, as given ({answers})
         </summary>
-        <div className="mt-(--space-2)">{list}</div>
+        <div ref={body} className="overflow-hidden"><div className="pt-(--space-2)">{list}</div></div>
       </details>
     );
   }
@@ -437,27 +469,40 @@ export function Composer({ session, busy, text, setText, onAnswer, onResolve }: 
   }
   if (busy || !session.question) return <p className="small font-normal text-ink-muted">{busy ? "Thinking…" : "Waiting for the interviewer."}</p>;
 
-  const q = session.question;
+  return <QuestionForm q={session.question} n={n} busy={busy} text={text} setText={setText} onAnswer={onAnswer} />;
+}
+
+/** One question: it arrives by lines (GSAP SplitText), then its chips and field rise in under it. */
+function QuestionForm({ q, n, busy, text, setText, onAnswer }: {
+  q: NonNullable<Session["question"]>; n: number; busy: boolean;
+  text: string; setText: (s: string) => void; onAnswer: (s: string) => void;
+}) {
+  const head = useRef<HTMLHeadingElement>(null);
+  const rest = useRef<HTMLDivElement>(null);
+  useLineReveal(head, q.ask);
+  useRiseIn(rest, q.ask);
   return (
     <form onSubmit={(e) => { e.preventDefault(); onAnswer(text); }} className="flex flex-col gap-(--space-3)">
       <div className="flex flex-col gap-(--space-1)">
         <p className="label text-ink-muted">Question {n}</p>
-        <h2 className="heading-2 text-ink">{q.ask}</h2>
+        <h2 ref={head} className="heading-2 text-ink">{q.ask}</h2>
       </div>
-      {q.chips.length > 0 && (
-        <div className="flex flex-wrap gap-(--space-2)">
-          {q.chips.map((c) => (
-            <Button key={c} kind="outline" onClick={() => setText(text ? `${text}; ${c}` : c)}>{c}</Button>
-          ))}
+      <div ref={rest} className="flex flex-col gap-(--space-3)">
+        {q.chips.length > 0 && (
+          <div className="flex flex-wrap gap-(--space-2)">
+            {q.chips.map((c) => (
+              <Button key={c} kind="outline" onClick={() => setText(text ? `${text}; ${c}` : c)}>{c}</Button>
+            ))}
+          </div>
+        )}
+        {/* The field's name stays the question (sr-only label), so focus on it reads the question. */}
+        <TextField id="answer" label={q.ask} hideLabel multiline autosize rows={2} value={text} onChange={setText}
+          placeholder="Your answer, in your own words"
+          onKeyDown={submitOnEnter({ empty: !text.trim(), busy }, () => onAnswer(text))} />
+        <div className="flex flex-wrap items-center justify-between gap-(--space-3)">
+          <KeyHint items={[["Enter", "to send"], ["Shift + Enter", "for a new line"]]} />
+          <Button type="submit" disabled={!text.trim()}>Send</Button>
         </div>
-      )}
-      {/* The field's name stays the question (sr-only label), so focus on it reads the question. */}
-      <TextField id="answer" label={q.ask} hideLabel multiline autosize rows={2} value={text} onChange={setText}
-        placeholder="Your answer, in your own words"
-        onKeyDown={submitOnEnter({ empty: !text.trim(), busy }, () => onAnswer(text))} />
-      <div className="flex flex-wrap items-center justify-between gap-(--space-3)">
-        <KeyHint items={[["Enter", "to send"], ["Shift + Enter", "for a new line"]]} />
-        <Button type="submit" disabled={!text.trim()}>Send</Button>
       </div>
     </form>
   );
@@ -467,8 +512,12 @@ export function Composer({ session, busy, text, setText, onAnswer, onResolve }: 
 export function PushbackCard({ session, busy, onResolve }: { session: Session; busy: boolean; onResolve: (c: ResolveChoice) => void }) {
   const pb = session.pushback!;
   const names = pb.flagged.join(", ");
+  const card = useRef<HTMLDivElement>(null);
+  // Note where the card is, so its answer can slide from here into the answer list.
+  const resolve = (choice: PushbackChoice) => { foldFrom(card.current); onResolve(choice); };
   return (
-    <Notice tone="danger" title={`Hold on: this would use student records (${names})`}
+    <div ref={card}>
+    <Notice tone="danger" title={<>Hold on: this would use <InkMark kind="underline">student records</InkMark> ({names})</>}
       actions={<Button kind="link" danger disabled={busy} onClick={() => onResolve("keep")}>Keep it anyway</Button>}>
       <p>That counts as Penn State Level 3–4 data (FERPA). AI Studio agents may only use Level 1–2 data. How should the agent work instead?</p>
       {/* Each way forward is one row you can click anywhere: the title is its name, the explanation its description. */}
@@ -478,7 +527,7 @@ export function PushbackCard({ session, busy, onResolve }: { session: Session; b
           return (
             <li key={choice} className="border-b border-hairline last:border-b-0">
               <button type="button" id={`pushback-${i}`} aria-labelledby={`pushback-${i}-title`} aria-describedby={`pushback-${i}-detail`}
-                disabled={busy} onClick={() => onResolve(choice)}
+                disabled={busy} onClick={() => resolve(choice)}
                 className="group flex min-h-[calc(var(--space-5)+var(--space-1))] w-full items-center justify-between gap-(--space-3) px-(--space-2) py-(--space-3) text-left transition-colors duration-(--dur-quick) ease-out hover:bg-paper-sunk focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-accent disabled:cursor-default disabled:text-ink-muted disabled:hover:bg-transparent motion-reduce:transition-none">
                 <span className="flex flex-col gap-(--space-1)">
                   <span id={`pushback-${i}-title`} className="small font-semibold text-ink">{opt.title}</span>
@@ -494,6 +543,7 @@ export function PushbackCard({ session, busy, onResolve }: { session: Session; b
         })}
       </ul>
     </Notice>
+    </div>
   );
 }
 

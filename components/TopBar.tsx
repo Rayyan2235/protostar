@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { StatusStrip } from "./StatusStrip";
+import { MotionSwitch } from "./MotionSwitch";
 
 /**
  * App-shell top bar (KILN-AGENT §6): paper-raised with a hairline; product name in the display face.
@@ -17,7 +18,7 @@ export function TopBar({ title, subtitle, children }: { title: string; subtitle?
         </div>
         <div className="flex min-w-0 flex-1 items-center justify-end gap-(--space-2)">
           <div className="flex min-w-0 flex-1 justify-end"><StatusStrip /></div>
-          <div className="flex shrink-0 items-center gap-(--space-2) whitespace-nowrap">{children}</div>
+          <div className="flex shrink-0 items-center gap-(--space-2) whitespace-nowrap">{children}<MotionSwitch /></div>
         </div>
       </div>
     </header>

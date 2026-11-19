@@ -57,9 +57,17 @@ export function space(name: `--space-${number}`): number {
   return parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)) || 0;
 }
 
-/** True when the visitor allows motion. Browser only; false on the server. */
+/**
+ * True when motion may play. The visible Motion switch (data-motion on <html>, Kiln §10) wins
+ * over the system setting both ways; without it, `prefers-reduced-motion` decides.
+ * Browser only; false on the server.
+ */
 export function motionOk(): boolean {
-  return typeof window !== "undefined" && window.matchMedia(MOTION_OK).matches;
+  if (typeof window === "undefined") return false;
+  const forced = document.documentElement.dataset.motion;
+  if (forced === "on") return true;
+  if (forced === "off") return false;
+  return window.matchMedia(MOTION_OK).matches;
 }
 
 /**
@@ -72,8 +80,7 @@ export function useKilnMotion(
   deps: unknown[] = [],
 ) {
   useGSAP(() => {
-    const mm = gsap.matchMedia();
-    mm.add(MOTION_OK, () => run(kilnTiming()));
-    return () => mm.revert();
+    if (!motionOk()) return;
+    return run(kilnTiming()) || undefined;
   }, { scope, dependencies: deps, revertOnUpdate: true });
 }

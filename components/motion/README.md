@@ -27,7 +27,7 @@ The highlight glide in `components/ChoiceList.tsx` (scope cards) uses Flip direc
 
 ## Rules
 - **Timing only from tokens.** No raw durations or curves here: a missing token means 0 s, not a made-up number. No stock GSAP eases (`power2`, `elastic`…).
-- **Reduced motion = the final state, still.** Every effect sits behind `gsap.matchMedia()` or `motionOk()`.
+- **Reduced motion = the final state, still.** Every effect sits behind `motionOk()`, which honours the Motion switch first (`data-motion` on `<html>`, see `../MotionSwitch.README.md`) and `prefers-reduced-motion` otherwise.
 - **The server markup is the final, still state.** Effects only animate *from* somewhere, so nothing is hidden if JavaScript is slow or off.
 - **Accessibility is unchanged.** SplitText adds its own `aria-label` and the split is reverted when the animation ends; ink strokes and checks are `aria-hidden`; focus moves exactly as before.
 - One animation library: don't add `motion`/framer-motion next to GSAP.

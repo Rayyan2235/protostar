@@ -49,11 +49,12 @@ test("Studio while the link is still being read renders the busy state too", () 
   assert.doesNotMatch(html, /id="idea"/);
 });
 
-test("start screen (K4): a type-led statement on paper, no art, no motion switch", () => {
+test("start screen (K4): a type-led statement on paper, no art; the Motion switch is back (motion pass, Kiln §10)", () => {
   const html = renderToStaticMarkup(<Studio />);
   assert.doesNotMatch(html, /role="img"/, "no scene");
   assert.doesNotMatch(html, /<svg/, "no drawn art");
-  assert.doesNotMatch(html, /aria-pressed/, "nothing moves, so no Motion switch");
+  // 2026-11-19: GSAP effects now move things, so Kiln's visible Motion switch returns (one toggle).
+  assert.equal(html.split("aria-pressed").length - 1, 1, "exactly one toggle: the Motion switch");
   assert.match(html, /<h1[^>]*class="display[^"]*"[^>]*>What do you keep answering <span[^>]*text-ink-muted[^>]*>over and over\?<\/span><\/h1>/);
   assert.match(html, /<label[^>]*for="idea"/);
   assert.equal(count(html, 'data-chip="arrow"'), 0, "the pill is disabled (no arrow) until there is text");

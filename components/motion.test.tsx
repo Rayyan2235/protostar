@@ -87,3 +87,21 @@ test("the question heading and the start statement keep their plain server marku
   assert.match(studio, /useLineReveal/);
   assert.match(studio, /useFlipChoice|data-fold/);
 });
+
+// Kiln §10: "A visible Motion switch overrides the system setting both ways." Windows with
+// animation effects off reports reduced motion, so without the switch nothing above would play.
+test("Motion switch: one toggle named Motion with aria-pressed, in the top bar from sm up", async () => {
+  const { TopBar } = await import("./TopBar");
+  const html = renderToStaticMarkup(<TopBar title="Protostar"><span id="action">New idea</span></TopBar>);
+  assert.equal(html.split("aria-pressed").length - 1, 1);
+  assert.match(html, /<button[^>]*aria-pressed="true"[^>]*>[\s\S]*?Motion[\s\S]*?<\/button>/, "server markup: on");
+  assert.match(html, /<button[^>]*class="[^"]*\bhidden\b[^"]*\bsm:inline-flex\b/, "phones follow the system; the bar stays one row");
+  assert.doesNotMatch(html, /radius-pill/, "K6a: controls lose the pill");
+});
+
+test("motion gate: data-motion on <html> wins over the system setting, both ways", () => {
+  const m = src("components/motion/kiln.ts");
+  assert.match(m, /dataset\.motion/);
+  assert.match(m, /=== "on"/);
+  assert.match(m, /=== "off"/);
+});

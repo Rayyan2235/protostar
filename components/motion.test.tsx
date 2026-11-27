@@ -105,3 +105,33 @@ test("motion gate: data-motion on <html> wins over the system setting, both ways
   assert.match(m, /=== "on"/);
   assert.match(m, /=== "off"/);
 });
+
+test("motion gate on first load: before the switch writes data-motion, the saved choice still wins over the system", async () => {
+  const { motionOk } = await import("./motion/kiln");
+  const g = globalThis as Record<string, unknown>;
+  const keep = { window: g.window, document: g.document, localStorage: g.localStorage };
+  const setup = (opts: { data?: string; saved?: string | "throw"; reduce: boolean }) => {
+    g.window = { matchMedia: (q: string) => ({ matches: q.includes("no-preference") ? !opts.reduce : opts.reduce }) };
+    g.document = { documentElement: { dataset: opts.data ? { motion: opts.data } : {} } };
+    g.localStorage = {
+      getItem: (k: string) => {
+        if (opts.saved === "throw") throw new Error("blocked");
+        return k === "protostar-motion" ? opts.saved ?? null : null;
+      },
+    };
+  };
+  try {
+    setup({ saved: "off", reduce: false });
+    assert.equal(motionOk(), false, "saved off, system allows motion: still");
+    setup({ saved: "on", reduce: true });
+    assert.equal(motionOk(), true, "saved on, system reduces (Rayyan's Windows): motion");
+    setup({ data: "off", saved: "on", reduce: false });
+    assert.equal(motionOk(), false, "data-motion wins over storage");
+    setup({ saved: "throw", reduce: true });
+    assert.equal(motionOk(), false, "storage blocked: the system decides");
+    setup({ reduce: false });
+    assert.equal(motionOk(), true, "nothing saved: the system decides");
+  } finally {
+    Object.assign(g, keep);
+  }
+});

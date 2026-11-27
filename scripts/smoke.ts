@@ -15,6 +15,11 @@ const Answer = z.object({
 });
 
 async function main() {
+  // The smoke test proves real model access; offline mode would only replay a fixture (ADR 0013).
+  if (provider() === "offline") {
+    console.log("LLM_PROVIDER=offline: the smoke test needs a real provider. Set foundry, anthropic or nebulaone in .env.");
+    process.exit(1);
+  }
   const roles = ["cheap", "capable"] as const;
   const models = [...new Set(roles.map((r) => resolveModel(r)))];
   console.log(`provider=${provider()} models=${models.join(", ")}`);
@@ -29,6 +34,7 @@ async function main() {
         schema: Answer,
         system: "Answer only from the provided source. If the source does not say, use 0 and quote nothing.",
         messages: [{ role: "user", content: `<source>\n${knowledge}\n</source>\n\nWhat minimum GPA does a student need to enter the Finance major?` }],
+        offline: () => ({ minimumGpa: 0, quote: "" }), // required by complete(); never used, offline mode exits above
       });
       const ok = data.minimumGpa === 3.5;
       if (!ok) failed++;

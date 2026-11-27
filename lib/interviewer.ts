@@ -6,32 +6,12 @@
  * Its output is advice. journey.ts decides which slot is asked and when the interview
  * ends; dataRules.ts decides data levels for every source a rule recognises.
  */
-import { z } from "zod";
-import { complete, provider } from "./llm";
-import { FALLBACK_QUESTIONS, PREFILLABLE, REQUIRED, missingSlots } from "./journey";
+import { complete } from "./llm";
+import { offlineTurnRaw } from "./offline";
+import { OFFLINE_SOURCE, TurnSchema, type TurnOutput } from "./schemas";
+import { REQUIRED, missingSlots } from "./journey";
 import { loadKnowledge } from "./knowledge";
 import { SLOT_KEYS, type InterviewTurn, type Level, type Session, type SlotKey } from "./types";
-
-const SLOT = z.enum(SLOT_KEYS);
-
-export const TurnSchema = z.object({
-  prefilled: z.array(z.object({
-    key: z.enum(PREFILLABLE),
-    value: z.string(),
-    confidence: z.number().describe("0 to 1. Use 0.8+ only when the idea or pages clearly answer it."),
-  })),
-  sources: z.array(z.object({
-    name: z.string().describe("The source as the requester described it"),
-    url: z.string().nullable(),
-    suggestedLevel: z.number().describe("Penn State data level: 1, 2, 3 or 4"),
-    reason: z.string(),
-  })).describe("Only sources named in the requester's latest message that the agent would read from. Empty if none."),
-  nextQuestion: z.object({
-    slot: SLOT,
-    ask: z.string().describe("One short, plain-language question"),
-    chips: z.array(z.string()).describe("2-3 short example answers the requester can tap"),
-  }).nullable(),
-});
 
 const SLOT_MEANING: Record<SlotKey, string> = {
   users: "who will use the agent, and when",
@@ -83,60 +63,28 @@ export interface TurnResult {
   offline: boolean;
 }
 
-/** Ask the model for the next turn. `latest` is the requester's newest text (idea or answer). */
-export async function interviewTurn(s: Session, latest: string): Promise<TurnResult> {
-  if (provider() === "offline") return { turn: offlineTurn(s), model: "offline-script", offline: true };
+/** Maps TurnSchema output, real or offline, to a turn. Clamps confidence to 0-1 and levels to 1-4. */
+export function toTurn(data: TurnOutput): InterviewTurn {
+  return {
+    prefilled: data.prefilled.map((p) => ({ ...p, confidence: clamp01(p.confidence) })),
+    sources: data.sources.map((x) => ({ name: x.name, url: x.url ?? undefined, suggestedLevel: clampLevel(x.suggestedLevel), reason: x.reason })),
+    nextQuestion: data.nextQuestion ?? undefined,
+    done: data.nextQuestion == null,
+  };
+}
 
+/**
+ * Ask the model for the next turn. `latest` is the requester's newest text (idea or answer).
+ * In offline mode complete() returns the scripted turn, parsed and mapped the same way.
+ */
+export async function interviewTurn(s: Session, latest: string): Promise<TurnResult> {
   const { data, model } = await complete({
     model: "capable",
     schema: TurnSchema,
     maxTokens: 2000,
     system: system(),
     messages: [{ role: "user", content: userMessage(s, latest) }],
+    offline: () => offlineTurnRaw(s),
   });
-  return {
-    model,
-    offline: false,
-    turn: {
-      prefilled: data.prefilled.map((p) => ({ ...p, confidence: clamp01(p.confidence) })),
-      sources: data.sources.map((x) => ({ name: x.name, url: x.url ?? undefined, suggestedLevel: clampLevel(x.suggestedLevel), reason: x.reason })),
-      nextQuestion: data.nextQuestion ?? undefined,
-      done: data.nextQuestion == null,
-    },
-  };
-}
-
-/**
- * Offline mode (LLM_PROVIDER=offline): a fixed script so the UI and the data gate can be
- * exercised without model access. The UI labels it. Not used for the demo.
- */
-const OFFLINE_CHIPS: Record<SlotKey, string[]> = {
-  users: ["Sophomores in Smeal pre-major", "Students outside Smeal thinking of Finance"],
-  top: ["What GPA do I need?", "Which courses come first?", "When can I apply?"],
-  never: ["Promise someone gets in", "Tell a student what to drop", "Look up a student's record"],
-  examples: ["Great: the published minimum + next steps. Bad: \"Yes, you qualify!\""],
-  sources: ["The bulletin + Smeal change-of-major page", "Plus students paste their degree audit"],
-  handoff: ["Appeals", "Medical or special circumstances", "Anything about a specific record"],
-};
-
-export function offlineTurn(s: Session): InterviewTurn {
-  const first = s.asked === 0 && s.slots.length === 0;
-  const prefilled: InterviewTurn["prefilled"] = first
-    ? [
-        { key: "users", value: "Students considering a change of major into Finance", confidence: 0.8 },
-        { key: "sources", value: "Finance B.S. bulletin page; Smeal change-of-major page", confidence: 0.8 },
-        { key: "top", value: "Minimum GPA; required entrance courses; credit window", confidence: 0.5 },
-      ]
-    : [];
-  const sources: InterviewTurn["sources"] = first
-    ? loadKnowledge().map((p) => ({ name: p.title, url: p.url, suggestedLevel: 1 as Level, reason: "Public page" }))
-    : [];
-  const after = { ...s, slots: [...s.slots, ...prefilled.map((p) => ({ ...p, filledBy: "prefill" as const }))] };
-  const slot = missingSlots(after)[0];
-  return {
-    prefilled,
-    sources,
-    nextQuestion: slot ? { slot, ask: FALLBACK_QUESTIONS[slot], chips: OFFLINE_CHIPS[slot] } : undefined,
-    done: !slot,
-  };
+  return { model, offline: model === OFFLINE_SOURCE, turn: toTurn(data) };
 }

@@ -70,7 +70,7 @@ export function blueprintMarkdown(bp: Blueprint): string {
     "",
     "## Tests",
     "",
-    bp.tests.note,
+    bp.tests.status === "not-run" ? bp.tests.note : bp.tests.headline, // BE-11 writes the full run summary
     "",
     "## Decision log",
     "",

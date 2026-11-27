@@ -367,3 +367,24 @@ test("change request, new scope, resubmit: v2 has the new scope", () => {
   assert.equal(v1.scope, "guided");
   assert.equal(s.scope, "faq");
 });
+
+test("a second flag resolved with (a) again keeps one self-report source", () => {
+  const audit3: Source = { ...audit, ruleId: "degree-audit" };
+  const transcripts: Source = { name: "Students upload transcripts", level: 3, decidedBy: "rule", reason: "FERPA", ruleId: "transcript" };
+  const first = run(started(), turn({ sources: [bulletin, audit3] }), { type: "RESOLVE_PUSHBACK", choice: "selfreport", at });
+  const flagged = run(first, answer("x"), turn({ sources: [transcripts] }));
+  assert.equal(flagged.pushback?.blocking, true, "second flag raised");
+  const s = reduce(flagged, { type: "RESOLVE_PUSHBACK", choice: "selfreport", at });
+  const name = SCENARIO.pushback.selfReportSource.name;
+  assert.equal(s.sources.filter((x) => x.name === name).length, 1);
+  const names = s.sources.map((x) => x.name);
+  assert.equal(new Set(names).size, names.length, "source names are unique");
+});
+
+test("the self-report source is not added next to a kept source with the same name in another case or spacing", () => {
+  const self = SCENARIO.pushback.selfReportSource;
+  const lookalike: Source = { ...self, name: `${self.name.toUpperCase()} ` };
+  const s = run(started(), turn({ sources: [lookalike, { ...audit, ruleId: "degree-audit" }] }), { type: "RESOLVE_PUSHBACK", choice: "selfreport", at });
+  const norm = (n: string) => n.trim().toLowerCase();
+  assert.equal(s.sources.filter((x) => norm(x.name) === norm(self.name)).length, 1);
+});

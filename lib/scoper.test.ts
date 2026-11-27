@@ -52,7 +52,19 @@ test("recommendation follows the requester's data choice", () => {
   assert.equal(recommendedScope(undefined).scope, "faq");
 });
 
-test("dollar formatting", () => {
-  assert.equal(formatDollars(24), "$24.00");
+test("dollar formatting: whole dollars at every size, so one column reads alike", () => {
+  assert.equal(formatDollars(24), "$24");
+  assert.equal(formatDollars(112), "$112");
   assert.equal(formatDollars(1234.4), "$1,234");
+  assert.equal(formatDollars(99.5), "$100");
+  assert.equal(formatDollars(1.4), "$1");
+  assert.equal(formatDollars(0.42), "under $1");
+  assert.equal(formatDollars(0), "$0");
+});
+
+test("the scope cards' column has one format (polish note 2026-11-17 a)", () => {
+  const k = { studentsPerMonth: 2000, convsPerStudent: 2 };
+  const shown = (["faq", "guided"] as const).flatMap((sc) => [haiku, sonnet].map((p) => formatDollars(estimate(sc, p, k).monthlyDollars)));
+  assert.ok(shown.includes("$24") && shown.includes("$112"), JSON.stringify(shown));
+  for (const s of shown) assert.match(s, /^\$\d{1,3}(,\d{3})*$/, s);
 });

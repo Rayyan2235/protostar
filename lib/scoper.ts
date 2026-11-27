@@ -120,6 +120,11 @@ export function recommendedScope(choice?: PushbackChoice): { scope: ScopeKey; wh
   return { scope: "faq", why: "Lowest risk and easiest to test. You can widen it after the tests pass." };
 }
 
+/**
+ * Whole dollars at every size, so "$24" and "$112" read alike in one column (an estimate
+ * has no meaningful cents). A non-zero amount under a dollar says so instead of "$0".
+ */
 export function formatDollars(n: number): string {
-  return n >= 100 ? `$${Math.round(n).toLocaleString("en-US")}` : `$${n.toFixed(2)}`;
+  if (n > 0 && n < 1) return "under $1";
+  return `$${Math.round(n).toLocaleString("en-US")}`;
 }

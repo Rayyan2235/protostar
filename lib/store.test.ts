@@ -37,6 +37,50 @@ test("unknown session is undefined", () => {
   assert.equal(getSession("nope"), undefined);
 });
 
+// --- BE-13: SQLITE_JOURNAL_MODE (WAL default, DELETE on Azure /home) --------------------------
+
+function withJournalEnv(value: string | undefined, fn: () => void) {
+  const before = process.env.SQLITE_JOURNAL_MODE;
+  if (value === undefined) delete process.env.SQLITE_JOURNAL_MODE;
+  else process.env.SQLITE_JOURNAL_MODE = value;
+  try {
+    fn();
+  } finally {
+    if (before === undefined) delete process.env.SQLITE_JOURNAL_MODE;
+    else process.env.SQLITE_JOURNAL_MODE = before;
+    resetDbForTests();
+  }
+}
+const tmpDb = () => path.join(mkdtempSync(path.join(tmpdir(), "protostar-jm-")), "t.db");
+
+test("journal mode defaults to WAL (unset or empty, like DATABASE_PATH)", () => {
+  for (const v of [undefined, ""]) {
+    withJournalEnv(v, () => {
+      assert.equal(resetDbForTests(tmpDb()).pragma("journal_mode", { simple: true }), "wal");
+    });
+  }
+});
+
+test("SQLITE_JOURNAL_MODE=DELETE reads back as delete", () => {
+  withJournalEnv("DELETE", () => {
+    assert.equal(resetDbForTests(tmpDb()).pragma("journal_mode", { simple: true }), "delete");
+  });
+});
+
+test("SQLITE_JOURNAL_MODE=WAL reads back as wal", () => {
+  withJournalEnv("WAL", () => {
+    assert.equal(resetDbForTests(tmpDb()).pragma("journal_mode", { simple: true }), "wal");
+  });
+});
+
+test("any other journal mode fails closed at open", () => {
+  for (const bad of ["MEMORY", "OFF", "TRUNCATE", "wal; DROP TABLE sessions"]) {
+    withJournalEnv(bad, () => {
+      assert.throws(() => resetDbForTests(tmpDb()), { message: "SQLITE_JOURNAL_MODE must be WAL or DELETE" }, JSON.stringify(bad));
+    });
+  }
+});
+
 // --- Phase 3: frozen blueprints and review rounds (contract §7) ----------------------------
 
 const bpFor = (s: Session, version: number): Blueprint =>

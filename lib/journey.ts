@@ -16,6 +16,7 @@ import type {
 import { SLOT_KEYS } from "./types";
 import { SCENARIO } from "./scenario";
 import { staleNote } from "./testSummary";
+import { chosen } from "./pushback";
 import { cleanKnobs, estimate, formatDollars, scopeByKey, type Knobs, type ModelRole, type Price, type ScopeKey } from "./scoper";
 
 export const STEPS: Step[] = ["idea", "interview", "scope", "tests", "blueprint", "review", "done"];
@@ -218,7 +219,9 @@ export function reduce(s: Session, a: Action): Session {
       let pushback = s.pushback;
       const flagged = added.filter((src) => src.level >= 3);
       if (flagged.length) {
+        // Spread keeps choice and choices: the earlier decision stays in force while the new card blocks.
         pushback = {
+          ...s.pushback,
           blocking: true,
           flagged: flagged.map((f) => f.name),
           flaggedRules: [...(s.pushback?.flaggedRules ?? []), ...flagged.flatMap((f) => (f.ruleId ? [f.ruleId] : []))],
@@ -285,7 +288,7 @@ export function reduce(s: Session, a: Action): Session {
       const what = SCENARIO.pushback.options[a.choice].logLine;
       const next: Session = {
         ...s, sources, question: undefined,
-        pushback: { ...pb, blocking: false, choice: a.choice },
+        pushback: { ...pb, blocking: false, choice: a.choice, choices: [...new Set([...chosen(pb), a.choice])] },
         log: say(s, a.at, "requester", what, "resolve"),
       };
       return maybeFinish(ask(next, a.at, s.question), a.at);

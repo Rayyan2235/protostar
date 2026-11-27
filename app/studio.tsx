@@ -20,8 +20,8 @@ import { TextField } from "@/components/TextField";
 import { TopBar } from "@/components/TopBar";
 import { ScopePicker, ScopeSummary } from "./scope";
 import { InkMark } from "@/components/InkMark";
-import { gsap, kilnTiming, motionOk } from "@/components/motion/kiln";
 import { useLineReveal, useRiseIn } from "@/components/motion/reveal";
+import { toggleByHeight, type SummaryClick } from "@/components/motion/height";
 import { foldFrom, foldInto } from "@/components/motion/fold";
 
 type ResolveChoice = PushbackChoice | "keep";
@@ -403,19 +403,7 @@ export function Ledger({ log, collapsed = false }: { log: Decision[]; collapsed?
   if (!rows.length) return null;
 
   // Collapsed history opens and closes by height instead of jumping (reduced motion: native).
-  const onSummary = (e: { currentTarget: HTMLElement; preventDefault: () => void }) => {
-    const d = e.currentTarget.parentElement as HTMLDetailsElement | null;
-    const el = body.current;
-    if (!d || !el || !motionOk()) return;
-    const t = kilnTiming();
-    if (d.open) {
-      e.preventDefault();
-      gsap.to(el, { height: 0, autoAlpha: 0, duration: t.quick, ease: t.ease,
-        onComplete: () => { d.open = false; gsap.set(el, { clearProps: "height,opacity,visibility" }); } });
-    } else {
-      requestAnimationFrame(() => gsap.from(el, { height: 0, autoAlpha: 0, duration: t.quick, ease: t.ease, clearProps: "height,opacity,visibility" }));
-    }
-  };
+  const onSummary = (e: SummaryClick) => toggleByHeight(e, body.current);
 
   const list = (
     <ol ref={list$}>

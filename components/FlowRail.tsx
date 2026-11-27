@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import type { Step } from "@/lib/types";
+import { DrawnCheck } from "./motion/DrawnCheck";
 
 /** The five requester steps, in order. One constant list. */
 export const FLOW_STEPS = ["Interview", "Scope", "Tests", "Blueprint", "Review"] as const;
@@ -44,7 +45,11 @@ export function FlowRail({ step, variant }: { step?: Step; variant: "top" | "mar
         {FLOW_STEPS.map((name, i) => (
           <li key={name} aria-current={marks[i] === "current" ? "step" : undefined}
             className="flex min-w-0 flex-col gap-(--space-1) pb-(--space-2) sm:flex-row sm:items-baseline sm:gap-(--space-2)">
-            <span className="label text-ink-muted">{num(i)}</span>
+            <span className="flex items-center gap-(--space-1)">
+              <span className="label text-ink-muted">{num(i)}</span>
+              {/* A finished step gets a check that draws itself when the step completes. */}
+              {marks[i] === "done" && <DrawnCheck />}
+            </span>
             {/* Phones: only the current step's name is visible; the others stay readable to screen readers. */}
             <span className={`small truncate ${marks[i] === "current" ? "font-semibold text-ink" : `${marks[i] === "done" ? "text-ink-soft" : "text-ink-muted"} sr-only font-normal sm:not-sr-only`}`}>
               {name}{marks[i] === "done" && <span className="sr-only"> (done)</span>}

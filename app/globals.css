@@ -125,15 +125,15 @@ body {
 /* FoldedSheet (K6b): the top-right corner is cut by --space-4; a stone triangle shows the fold. */
 .folded-sheet {
   position: relative;
-  clip-path: polygon(0 0, calc(100% - var(--space-4)) 0, 100% var(--space-4), 100% 100%, 0 100%);
+  clip-path: polygon(0 0, calc(100% - var(--fold, var(--space-4))) 0, 100% var(--fold, var(--space-4)), 100% 100%, 0 100%);
 }
 .folded-sheet::before {
   content: "";
   position: absolute;
   top: 0;
   right: 0;
-  width: var(--space-4);
-  height: var(--space-4);
+  width: var(--fold, var(--space-4));
+  height: var(--fold, var(--space-4));
   background: linear-gradient(to bottom left, transparent 50%, var(--stone) 50%);
 }
 @media (forced-colors: active) {
@@ -143,4 +143,9 @@ body {
 @media print {
   .folded-sheet { clip-path: none; }
   .folded-sheet::before { display: none; }
+}
+
+/* K7: the reviewer's sections fade in on scroll; print always shows everything. */
+@media print {
+  [data-reveal] { opacity: 1 !important; }
 }

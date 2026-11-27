@@ -18,7 +18,8 @@ export function Notice({ tone = "neutral", title, children, actions, live = true
   tone?: Tone;
   /** false for history that is already on the page (no live role, so it isn't re-announced). */
   live?: boolean;
-  title?: string;
+  /** Words first; may hold an inline mark such as InkMark around them. */
+  title?: ReactNode;
   children: ReactNode;
   /** Buttons that answer the notice. */
   actions?: ReactNode;

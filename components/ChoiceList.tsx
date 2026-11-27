@@ -1,7 +1,7 @@
 "use client";
 
 import { useLayoutEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
-import { Flip, kilnTiming, motionOk } from "@/components/motion/kiln";
+import { Flip, kilnTiming, motionOk, track } from "@/components/motion/kiln";
 
 export interface Choice<V extends string> {
   value: V;
@@ -42,7 +42,7 @@ export function ChoiceList<V extends string>({ label, options, value, onChange, 
     const hl = group.current?.querySelector('[data-flip-id="choice-highlight"]');
     if (!state || !hl) return;
     const t = kilnTiming();
-    Flip.from(state, { targets: hl, duration: t.quick, ease: t.ease });
+    track(Flip.from(state, { targets: hl, duration: t.quick, ease: t.ease }));
   }, [value]);
 
   const onKey = (e: KeyboardEvent, i: number) => {

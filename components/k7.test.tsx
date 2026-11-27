@@ -45,7 +45,7 @@ test("the start statement is never hidden while fonts load: reveal only if fonts
   const r = src("components/motion/reveal.ts");
   assert.doesNotMatch(r, /fonts\.ready/, "no late reveal after fonts arrive");
   assert.doesNotMatch(r, /gsap\.set\([^)]*opacity:\s*0/, "nothing set to opacity 0 ahead of the tween");
-  assert.match(r, /document\.fonts\.status\s*===\s*"loaded"/);
+  assert.match(r, /document\.fonts\.status\s*[!=]==\s*"loaded"/, "gated on fonts being loaded at mount");
 });
 
 test("turning motion off finishes every tracked effect at once", () => {
@@ -64,7 +64,8 @@ test("FoldedSheet unfold: data-unfold only when asked; CSS reads --fold in clip-
   assert.match(renderToStaticMarkup(<FoldedSheet unfold>x</FoldedSheet>), /data-unfold/);
   assert.doesNotMatch(renderToStaticMarkup(<FoldedSheet>x</FoldedSheet>), /data-unfold/);
   const css = src("app/globals.css");
-  const block = css.slice(css.indexOf(".folded-sheet {"), css.indexOf("@media (forced-colors"));
+  const from = css.indexOf(".folded-sheet {");
+  const block = css.slice(from, css.indexOf("@media", from));
   assert.ok(count(block, "var(--fold, var(--space-4))") >= 3, "clip-path (x2) + ::before size");
   const fold = src("components/FoldedSheet.tsx");
   assert.match(fold, /--space-5/);
@@ -93,7 +94,8 @@ test("DecisionLog: same SSR text, no inline style, count through Figure", () => 
   const log = [{ at, who: "requester", what: "Picked guided" }, { at, who: "reviewer", what: "Approved v1" }] as never;
   const html = renderToStaticMarkup(<DecisionLog log={log} />);
   assert.doesNotMatch(html.replace(/<span aria-hidden="true"[\s\S]*?<\/span>/g, ""), /style="/, "no inline style outside Figure's digits");
-  assert.match(html.replace(/<[^>]+>/g, " "), /Decision log \( ?2 ?\)/);
+  assert.match(html, /Decision log \(/);
+  assert.match(html, /class="sr-only"[^>]*>2</, "the count's readable copy");
   assert.match(src("components/DecisionLog.tsx"), /<Figure/);
   assert.match(src("components/DecisionLog.tsx"), /Flip\.getState/);
 });

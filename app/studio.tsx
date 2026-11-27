@@ -20,7 +20,7 @@ import { TextField } from "@/components/TextField";
 import { TopBar } from "@/components/TopBar";
 import { ScopePicker, ScopeSummary } from "./scope";
 import { InkMark } from "@/components/InkMark";
-import { gsap, kilnTiming, motionOk } from "@/components/motion/kiln";
+import { gsap, kilnTiming, motionOk, track } from "@/components/motion/kiln";
 import { useLineReveal, useRiseIn } from "@/components/motion/reveal";
 import { foldFrom, foldInto } from "@/components/motion/fold";
 
@@ -410,10 +410,10 @@ export function Ledger({ log, collapsed = false }: { log: Decision[]; collapsed?
     const t = kilnTiming();
     if (d.open) {
       e.preventDefault();
-      gsap.to(el, { height: 0, autoAlpha: 0, duration: t.quick, ease: t.ease,
-        onComplete: () => { d.open = false; gsap.set(el, { clearProps: "height,opacity,visibility" }); } });
+      track(gsap.to(el, { height: 0, autoAlpha: 0, duration: t.quick, ease: t.ease,
+        onComplete: () => { d.open = false; gsap.set(el, { clearProps: "height,opacity,visibility" }); } }));
     } else {
-      requestAnimationFrame(() => gsap.from(el, { height: 0, autoAlpha: 0, duration: t.quick, ease: t.ease, clearProps: "height,opacity,visibility" }));
+      requestAnimationFrame(() => track(gsap.from(el, { height: 0, autoAlpha: 0, duration: t.quick, ease: t.ease, clearProps: "height,opacity,visibility" })));
     }
   };
 

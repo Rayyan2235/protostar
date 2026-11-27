@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { ModeBadge } from "@/components/ModeBadge";
 import { StatusProvider } from "@/components/StatusStrip";
 import { Notice } from "@/components/Notice";
+import { InkMark } from "@/components/InkMark";
 import { MorphNote } from "@/components/MorphNote";
 import { TopBar } from "@/components/TopBar";
 import { POLL_MS } from "@/app/studio";
@@ -136,7 +137,7 @@ export default function Reviewer({ reviewId }: { reviewId: string }) {
       <h1 className="sr-only">Review blueprint v{view.blueprint.version}</h1>
       <div className="grid gap-(--space-5) lg:grid-cols-12">
         <div className="flex min-w-0 flex-col gap-(--space-4) lg:col-span-8">
-          <BlueprintView blueprint={view.blueprint} audience="reviewer" status={OUTCOME[view.status]} />
+          <BlueprintView blueprint={view.blueprint} audience="reviewer" status={OUTCOME[view.status]} costInk={view.status !== "approved"} />
           <ExportBar blueprint={view.blueprint} />
         </div>
         {/* Sticky on wide screens so the decision stays in reach while the blueprint scrolls. */}
@@ -172,9 +173,10 @@ export function StatusNotice({ view }: { view: ReviewView }) {
   const s = {
     pending: { tone: "accent", head: `v${v} · waiting for your decision`, body: "Read the blueprint, then approve it, ask for changes, or reject it." },
     changes: { tone: "neutral", head: "Waiting for the requester to resubmit", body: `You asked for changes on v${v}: ${note ?? ""} This page shows the new version when it arrives.` },
-    approved: { tone: "success", head: `Approved v${v}`, body: "This review is closed." },
+    // K7: the approved stamp is the screen's one ink mark (the cost loses its circle).
+    approved: { tone: "success", head: <InkMark kind="circle">Approved v{v}</InkMark>, body: "This review is closed." },
     rejected: { tone: "danger", head: `Rejected v${v}`, body: note || "This review is closed." },
-  } as const;
+  } satisfies Record<ReviewView["status"], { tone: "accent" | "neutral" | "success" | "danger"; head: ReactNode; body: string }>;
   const { tone, head, body } = s[view.status];
   return <Notice tone={tone} title={head}>{body}</Notice>;
 }

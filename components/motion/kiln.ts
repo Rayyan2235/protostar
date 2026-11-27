@@ -30,6 +30,8 @@ export interface KilnTiming {
   quick: number;
   /** Seconds. Arrivals: one entrance moment per screen (Kiln `--dur-enter`). */
   enter: number;
+  /** Seconds. The one loop (the running arc), Kiln `--dur-mood`. */
+  mood: number;
   /** A CustomEase built from Kiln `--ease-out`. */
   ease: string;
 }
@@ -49,7 +51,7 @@ export function kilnTiming(): KilnTiming {
   const curve = cs.getPropertyValue("--ease-out").match(/-?[\d.]+/g)?.slice(0, 4).join(",");
   if (curve) CustomEase.create("kiln-out", curve);
   // A missing token means no motion (0 s), never a made-up duration.
-  cached = { quick: seconds("--dur-quick", 0), enter: seconds("--dur-enter", 0), ease: curve ? "kiln-out" : "none" };
+  cached = { quick: seconds("--dur-quick", 0), enter: seconds("--dur-enter", 0), mood: seconds("--dur-mood", 0), ease: curve ? "kiln-out" : "none" };
   return cached;
 }
 

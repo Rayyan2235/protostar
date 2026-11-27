@@ -6,11 +6,11 @@ GSAP is the project's **one** animation library (Kiln `Sources.md`: "one animati
 
 | File | What it is |
 |---|---|
-| `kiln.ts` | Registers the plugins (Flip, SplitText, DrawSVG, CustomEase, `useGSAP`) in the browser. `kilnTiming()` reads `--dur-quick`, `--dur-enter` and `--ease-out` from `app/tokens.css` and builds the `kiln-out` CustomEase. `useKilnMotion(ref, run, deps)` runs effects only under `(prefers-reduced-motion: no-preference)` and reverts them on unmount. `space()` and `motionOk()` are small helpers. |
+| `kiln.ts` | Registers the plugins (Flip, SplitText, DrawSVG, CustomEase, `useGSAP`) in the browser. `kilnTiming()` reads `--dur-quick`, `--dur-enter`, `--dur-mood` (the one loop) and `--ease-out` from `app/tokens.css` and builds the `kiln-out` CustomEase. `useKilnMotion(ref, run, deps)` runs effects only under `(prefers-reduced-motion: no-preference)` and reverts them on unmount. `space()` and `motionOk()` are small helpers. |
 | `pref.ts` | `MOTION_KEY` and `savedMotion()`: the visitor's saved Motion switch choice. `motionOk()` falls back to it on first load, before the switch has written `data-motion`. |
 | `reveal.ts` | `useLineReveal(ref, key, pace)`: a heading's lines rise through a mask (SplitText), then the split is undone. `useRiseIn(ref, key)`: a block fades up by `--space-2`. |
 | `fold.ts` | `foldFrom(el)` on the click that resolves the red card, `foldInto(row)` when the new "Data choice" row mounts: the row slides from where the card was. |
-| `DrawnCheck.tsx` | A small check that draws itself (DrawSVG) when a step is finished. |
+| `DrawnCheck.tsx` | `DrawnMark kind="check" \| "cross"`: a small mark that draws itself (DrawSVG); `animate`, `delay` (seconds) and `tone` are optional. `DrawnCheck` is the step bar's check wrapper. `StatusMark` builds on it. |
 
 The highlight glide in `components/ChoiceList.tsx` (scope cards) uses Flip directly: one highlight span (`data-flip-id="choice-highlight"`) under the checked row, recorded before a change and flipped to the new row.
 

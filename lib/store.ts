@@ -2,12 +2,13 @@
  * SQLite persistence (better-sqlite3). Prototype-grade: the session is one JSON blob;
  * decisions are also rows so the log is queryable on its own.
  * Submitted blueprints are frozen in their own table, one row per version, with one
- * review round each (ADR 0011). Later phases add test_runs.
+ * review round each (ADR 0011). Full test runs live in test_runs (contract 9.7).
  */
 import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
-import type { Blueprint, Decision, ReviewRound, ReviewStatus, Session } from "./types";
+import { refOf } from "./testSummary";
+import type { Blueprint, Decision, ReviewRound, ReviewStatus, Session, TestRun } from "./types";
 
 let db: Database.Database | undefined;
 
@@ -50,6 +51,15 @@ export function openDb(file = process.env.DATABASE_PATH || "./data/protostar.db"
       PRIMARY KEY (session_id, version),
       FOREIGN KEY (session_id, version) REFERENCES blueprints(session_id, version)
     );
+    CREATE TABLE IF NOT EXISTS test_runs (
+      run_id     TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL REFERENCES sessions(id),
+      at         TEXT NOT NULL,
+      offline    INTEGER NOT NULL,
+      evidence   INTEGER NOT NULL,
+      json       TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS test_runs_session ON test_runs(session_id, at);
   `);
   return db;
 }
@@ -114,6 +124,39 @@ export function saveReviewEvent(s: Session, now = new Date().toISOString()): voi
     d.prepare("UPDATE reviews SET status = ?, opened_at = ?, decided_at = ?, note = ? WHERE session_id = ? AND version = ?")
       .run(r.status, r.openedAt ?? null, r.decidedAt ?? null, r.note ?? null, s.id, r.version);
   })();
+}
+
+// --- Test runs (contract 9.7) ------------------------------------------------------------------
+
+/** One full TestRun. `evidence` is RunRef.evidence: the Phase 3 gate counts evidence = 1 only, never offline runs. */
+export function saveRun(sessionId: string, run: TestRun): void {
+  openDb().prepare("INSERT INTO test_runs (run_id, session_id, at, offline, evidence, json) VALUES (?, ?, ?, ?, ?, ?)")
+    .run(run.id, sessionId, run.at, run.offline ? 1 : 0, refOf(run, []).evidence ? 1 : 0, JSON.stringify(run));
+}
+
+/** The run and the session that now points at it, in one transaction. */
+export function saveRunAndSession(s: Session, run: TestRun, now = new Date().toISOString()): void {
+  const d = openDb();
+  d.transaction(() => {
+    saveSession(s, now); // first: test_runs.session_id references sessions(id)
+    saveRun(s.id, run);
+  })();
+}
+
+export function getRun(runId: string): TestRun | undefined {
+  const row = openDb().prepare("SELECT json FROM test_runs WHERE run_id = ?").get(runId) as { json: string } | undefined;
+  return row ? (JSON.parse(row.json) as TestRun) : undefined;
+}
+
+/** A session's runs, oldest first. */
+export function getRuns(sessionId: string): TestRun[] {
+  const rows = openDb().prepare("SELECT json FROM test_runs WHERE session_id = ? ORDER BY at, rowid").all(sessionId) as { json: string }[];
+  return rows.map((r) => JSON.parse(r.json) as TestRun);
+}
+
+/** RESET only (before any submit). */
+export function deleteRuns(sessionId: string): void {
+  openDb().prepare("DELETE FROM test_runs WHERE session_id = ?").run(sessionId);
 }
 
 export function findSessionIdByReviewId(reviewId: string): string | undefined {

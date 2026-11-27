@@ -4,7 +4,8 @@
  * provisional until they are checked against AI Studio itself.
  */
 import { formatDollars } from "./scoper";
-import type { Blueprint, BlueprintSlot } from "./types";
+import { staleNote } from "./testSummary";
+import type { Blueprint, BlueprintSlot, Role2 } from "./types";
 
 /** A Markdown table cell: pipes escaped, line breaks kept as <br>. */
 const cell = (t: string) => t.replace(/\|/g, "\\|").replace(/\r?\n/g, "<br>");
@@ -15,6 +16,28 @@ const fence = (text: string) => "`".repeat(Math.max(3, ...[...text.matchAll(/`+/
 function filledBy(x: BlueprintSlot): string {
   if (x.filledBy === "requester") return "Requester";
   return `Filled by the tool${x.confidence !== undefined ? ` (confidence ${x.confidence.toFixed(2)})` : ""}`;
+}
+
+const ROLE: Record<Role2, string> = { cheap: "Cheap", capable: "Capable" };
+
+/** The run summary: source label first (offline is never a model run), then the headline, columns and failures. */
+function testsSection(bp: Blueprint): string[] {
+  const t = bp.tests;
+  if (t.status === "not-run") return [t.note];
+  return [
+    `_${t.label}. Run ${t.at}._`,
+    ...(t.stale ? ["", `**${staleNote(bp.version)}.**`] : []),
+    "",
+    t.headline,
+    "",
+    "| Column | Model | Passed |",
+    "|---|---|---|",
+    ...t.columns.map((c) => `| ${ROLE[c.role]} | ${cell(c.source)} | ${c.unavailable ? "unavailable" : `${c.passed}/${c.total}`} |`),
+    ...(t.failures.length
+      ? ["", "Failures:", "", ...t.failures.map((f) =>
+          `- Test ${f.testId}, ${ROLE[f.role]} (${f.source}, ${f.by}): ${f.prompt} ${f.reason}${f.accepted ? ` Accepted: ${f.accepted}` : ""}`)]
+      : []),
+  ];
 }
 
 export function blueprintMarkdown(bp: Blueprint): string {
@@ -62,7 +85,7 @@ export function blueprintMarkdown(bp: Blueprint): string {
     "",
     "## Draft instructions",
     "",
-    bp.instructions.draftedBy === "template" ? "_Template, not model-drafted._" : "_Drafted by a model._",
+    `${bp.instructions.draftedBy === "template" ? "_Template, not model-drafted." : "_Drafted by a model."}${bp.instructions.source ? ` Source: ${bp.instructions.source}.` : ""}_`,
     "",
     `${f}text`,
     bp.instructions.text,
@@ -70,7 +93,7 @@ export function blueprintMarkdown(bp: Blueprint): string {
     "",
     "## Tests",
     "",
-    bp.tests.note,
+    ...testsSection(bp),
     "",
     "## Decision log",
     "",

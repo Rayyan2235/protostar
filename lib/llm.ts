@@ -10,8 +10,9 @@ import Anthropic from "@anthropic-ai/sdk";
 import AnthropicFoundry from "@anthropic-ai/foundry-sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import type { z } from "zod";
+import { OFFLINE_SOURCE } from "./schemas";
 
-/** `offline` = no model at all; callers use scripted output and the UI says so. */
+/** `offline` = no model at all: complete() returns each caller's fixture, labelled "offline-script" (ADR 0013). */
 export type Provider = "foundry" | "anthropic" | "nebulaone" | "offline";
 export type ModelRole = "cheap" | "capable" | "judge";
 
@@ -22,6 +23,11 @@ export interface CompleteOptions<S extends z.ZodType> {
   /** A role from env config, or an explicit model / deployment name. */
   model?: ModelRole | (string & {});
   maxTokens?: number;
+  /**
+   * Required. A deterministic raw fixture in the schema's input shape. Used only when
+   * LLM_PROVIDER=offline, and parsed with `schema` like real output (ADR 0013).
+   */
+  offline: () => unknown;
 }
 
 export interface CompleteResult<T> {
@@ -93,8 +99,15 @@ function client(): MessagesClient {
   return c;
 }
 
-/** One structured-output call. Throws LLMError on refusal, truncation, or unparseable output. */
+/**
+ * One structured-output call. Throws LLMError on refusal, truncation, or unparseable output.
+ * In offline mode it returns the caller's fixture parsed with the same schema (a ZodError if
+ * the fixture drifts), labelled "offline-script", and never builds a client.
+ */
 export async function complete<S extends z.ZodType>(opts: CompleteOptions<S>): Promise<CompleteResult<z.infer<S>>> {
+  if (provider() === "offline") {
+    return { data: opts.schema.parse(opts.offline()), model: OFFLINE_SOURCE, usage: { inputTokens: 0, outputTokens: 0 } };
+  }
   const model = resolveModel(opts.model);
   const res = await client().messages.parse({
     model,

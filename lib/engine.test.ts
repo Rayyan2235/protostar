@@ -3,7 +3,7 @@ import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import type { ClientAction } from "./api";
 import { act, blueprintFor, pendingSlot, reviewAct, reviewView, startSession } from "./engine";
-import { getBlueprint, getRounds, getSession, resetDbForTests, saveSession } from "./store";
+import { getBlueprint, getRounds, getRuns, getSession, resetDbForTests, saveSession } from "./store";
 import type { Session, SlotKey } from "./types";
 
 process.env.LLM_PROVIDER = "offline";
@@ -251,4 +251,146 @@ test("engine: a reviewer body that isn't an object is a 400 with a plain message
     const r = await reviewAct("any-id", body);
     assert.deepEqual([r.status, r.body.error], [400, "Invalid request."], JSON.stringify(body));
   }
+});
+
+// --- Phase 2b: run_tests (BE-10) -------------------------------------------------------------
+
+const PINNED = "Capable passed all 13. Cheap failed 1: doesn't state the 3.50 minimum from the bulletin.";
+async function danaAtTests() {
+  const s = await danaAtScope();
+  return (await step(s.id, { type: "choose_scope", scope: "guided", role: "cheap", knobs: KNOBS })).session;
+}
+
+test("engine: run_tests offline saves the run, keeps its ref and logs the pinned headline", async () => {
+  const s = await danaAtTests();
+  const r = await step(s.id, { type: "run_tests" });
+  assert.equal(r.error, undefined);
+  assert.equal(r.session.run?.headline, PINNED);
+  assert.equal(r.session.tests?.length, 13);
+  assert.equal(r.session.draft?.source, "offline-script");
+  assert.equal(r.session.log.at(-1)?.what, `Ran 13 tests on offline-script and offline-script (offline script): ${PINNED}`);
+  const runs = getRuns(s.id);
+  assert.deepEqual(runs.map((x) => x.id), [r.session.run!.id]);
+  assert.deepEqual(getSession(s.id)?.run, r.session.run);
+});
+
+test("engine: run_tests at the interview and at review is blocked and saves no run", async () => {
+  const mid = await interview({}, untilNever);
+  const a = await step(mid.id, { type: "run_tests" });
+  assert.equal(a.session.log.at(-1)?.kind, "blocked");
+  assert.equal(a.session.run, undefined);
+  const review = (await submittedV1()).session;
+  const b = await step(review.id, { type: "run_tests" });
+  assert.equal(b.session.log.at(-1)?.kind, "blocked");
+  assert.equal(b.session.run, undefined);
+  assert.deepEqual([getRuns(mid.id), getRuns(review.id)], [[], []]);
+});
+
+test("engine: a draft error saves no run, logs Test run failed and returns the error", async () => {
+  const s = await danaAtTests();
+  const old = { p: process.env.LLM_PROVIDER, k: process.env.LLM_API_KEY, c: process.env.MODEL_CAPABLE };
+  process.env.LLM_PROVIDER = "anthropic";
+  delete process.env.LLM_API_KEY;
+  delete process.env.MODEL_CAPABLE;
+  try {
+    const r = await step(s.id, { type: "run_tests" });
+    assert.match(r.error ?? "", /MODEL_CAPABLE/);
+    assert.equal(r.session.run, undefined);
+    assert.equal(r.session.log.at(-1)?.what, `Test run failed: ${r.error}`);
+    assert.equal(r.session.log.at(-1)?.kind, "tests");
+    assert.deepEqual(getRuns(s.id), []);
+    assert.equal(getSession(s.id)?.log.at(-1)?.what, `Test run failed: ${r.error}`);
+  } finally {
+    process.env.LLM_PROVIDER = old.p;
+    if (old.k !== undefined) process.env.LLM_API_KEY = old.k;
+    if (old.c !== undefined) process.env.MODEL_CAPABLE = old.c;
+  }
+});
+
+test("engine: after a blueprint edit to never, the re-run drafts with the new wording and clears stale", async () => {
+  const s = await danaAtTests();
+  await step(s.id, { type: "run_tests" });
+  await step(s.id, { type: "continue" });
+  const edited = (await step(s.id, { type: "edit", key: "never", value: "Promise admission or quote tuition" })).session;
+  assert.equal(edited.testsStale, true);
+  assert.equal(edited.draft, undefined);
+  const r = await step(s.id, { type: "run_tests" });
+  assert.equal(r.session.step, "blueprint");
+  assert.ok(r.session.draft?.instructions.includes("Promise admission or quote tuition"), r.session.draft?.instructions);
+  assert.equal(r.session.testsStale, false);
+  assert.equal(getRuns(s.id).length, 2);
+});
+
+test("engine: reset deletes the session's test runs", async () => {
+  const s = await danaAtTests();
+  await step(s.id, { type: "run_tests" });
+  assert.equal(getRuns(s.id).length, 1);
+  await step(s.id, { type: "reset" });
+  assert.deepEqual(getRuns(s.id), []);
+});
+
+// --- Phase 2b: rewrite, accept, blueprint, stale submit (BE-11) ------------------------------
+
+const GOOD = "Finance needs a minimum cumulative GPA of 3.50, per the bulletin. That's not a promise of admission; talk to an advisor.";
+
+test("engine: a rewrite promising admission is refused with the check's reason", async () => {
+  const s = await danaAtTests();
+  await step(s.id, { type: "run_tests" });
+  const r = await step(s.id, { type: "rewrite_answer", testId: 1, value: "Yes, you're guaranteed admission with a 3.50." });
+  assert.equal(r.session.tests?.length, 13);
+  assert.equal(r.session.log.at(-1)?.kind, "blocked");
+  assert.match(r.session.log.at(-1)!.what, /^Rewrite refused: Promises an outcome/);
+});
+
+test("engine: a rewrite naming a degree audit is refused by the data gate", async () => {
+  const s = await danaAtTests();
+  await step(s.id, { type: "run_tests" });
+  const r = await step(s.id, { type: "rewrite_answer", testId: 1, value: "Paste your degree audit and I'll check the 3.50 minimum with an advisor." });
+  assert.equal(r.session.tests?.length, 13);
+  assert.match(r.session.log.at(-1)!.what, /^Rewrites can't include Level 3–4 data/);
+});
+
+test("engine: rewrite then re-run passes offline (cheap 12/13 -> 14/14); a second rewrite replaces the first", async () => {
+  const s = await danaAtTests();
+  const first = (await step(s.id, { type: "run_tests" })).session;
+  assert.deepEqual(first.run?.columns.map((c) => `${c.passed}/${c.total}`), ["12/13", "13/13"]);
+  await step(s.id, { type: "rewrite_answer", testId: 1, value: "A first try: 3.50 minimum, see an advisor." });
+  const twice = (await step(s.id, { type: "rewrite_answer", testId: 1, value: GOOD })).session;
+  assert.equal(twice.tests?.length, 14);
+  assert.equal(twice.tests?.at(-1)?.reference, GOOD);
+  assert.equal(twice.testsStale, true);
+  const rerun = (await step(s.id, { type: "run_tests" })).session;
+  assert.deepEqual(rerun.run?.columns.map((c) => `${c.passed}/${c.total}`), ["14/14", "14/14"]);
+  assert.ok(rerun.draft?.instructions.includes(GOOD), "the rewrite is a worked example in the new draft");
+  assert.equal(rerun.testsStale, false);
+});
+
+test("engine: accept with a note shows on the blueprint; the frozen blueprint keeps its run summary", async () => {
+  const s = await danaAtTests();
+  await step(s.id, { type: "run_tests" });
+  await step(s.id, { type: "accept_failure", testId: 1, role: "cheap", note: "Students see the GPA on the next screen." });
+  const bpr = await step(s.id, { type: "continue" });
+  assert.equal(bpr.session.log.at(-1)?.what, `Continued to the blueprint. Tests: ${PINNED}`);
+  const t = bpr.blueprint!.tests;
+  assert.ok(t.status === "run");
+  if (t.status !== "run") return;
+  assert.equal(t.failures[0].accepted, "Students see the GPA on the next screen.");
+  assert.equal(t.label, "Offline script, not a model run");
+  assert.equal(bpr.blueprint!.instructions.source, "offline-script");
+  const sub = await step(s.id, { type: "submit" });
+  const frozen = getBlueprint(s.id, 1)!;
+  assert.ok(frozen.tests.status === "run" && frozen.tests.headline === PINNED && !frozen.tests.stale);
+  assert.deepEqual(sub.blueprint?.tests, frozen.tests);
+});
+
+test("engine: a submit with stale tests is allowed, frozen stale, and logged with the stale note", async () => {
+  const s = await danaAtTests();
+  await step(s.id, { type: "run_tests" });
+  await step(s.id, { type: "continue" });
+  await step(s.id, { type: "edit", key: "never", value: "Promise admission or quote tuition" });
+  const sub = await step(s.id, { type: "submit" });
+  assert.equal(sub.session.step, "review");
+  assert.equal(sub.session.log.at(-1)?.what, "Submitted blueprint v1 for review. Tests out of date: run before v1.");
+  const frozen = getBlueprint(s.id, 1)!;
+  assert.ok(frozen.tests.status === "run" && frozen.tests.stale);
 });

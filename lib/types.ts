@@ -1,5 +1,6 @@
 /** Shared contract. Mirrors the planning vault's codebase-architecture note. */
 import type { Estimate, Knobs, ScopeKey } from "./scoper";
+import type { CheckId } from "./checks";
 
 export type Who = "requester" | "tool" | "reviewer";
 /** Penn State data classification. AI Studio allows Levels 1–2. */
@@ -41,7 +42,8 @@ export type DecisionKind =
   | "idea" | "question" | "answer" | "edit" | "prefill" | "source" | "flag" | "resolve" | "blocked" | "done" | "scope" | "note"
   | "blueprint"   // requester continued to the blueprint
   | "submit"      // requester submitted version n
-  | "review";     // reviewer opened or decided
+  | "review"      // reviewer opened or decided
+  | "tests";      // test run, rewrite or accepted failure (Phase 2b)
 
 export interface Decision {
   at: string;
@@ -66,7 +68,11 @@ export interface Pushback {
   /** Rule ids behind the flag; once resolved, the same rule doesn't re-flag. */
   flaggedRules: string[];
   options: PushbackChoice[];
+  /** The latest applied choice (back-compat; recommendedScope follows it). */
   choice?: PushbackChoice;
+  /** Every applied choice, in first-chosen order, deduped. All stay in force. Old sessions lack it:
+   *  read it through lib/pushback.ts chosen(). */
+  choices?: PushbackChoice[];
   attempts: number;
   /** The Level 3–4 Source objects that raised the flag, kept after RESOLVE_PUSHBACK removes them
    *  from `sources`. Accumulates like flaggedRules. Old sessions lack it. */
@@ -111,6 +117,16 @@ export interface Session {
   log: Decision[];
   /** Set on first submit. Old sessions lack it. */
   review?: SessionReview;
+  // Phase 2b (contract 9.3). All optional; old sessions lack them.
+  /** The latest drafted instructions; cleared when the scope or a slot changes. */
+  draft?: Draft;
+  /** Generated tests plus the requester's own (from: "requester"). */
+  tests?: Test[];
+  /** The latest run; the full run lives in `test_runs`. */
+  run?: RunRef;
+  accepted?: Acceptance[];
+  /** Slots were edited after the latest run. */
+  testsStale?: boolean;
 }
 
 /** What the interviewer model returns each turn (validated again by journey.ts). */
@@ -136,8 +152,8 @@ export interface Blueprint {
   data: DataVerdict;
   scope: BlueprintScope;
   knowledge: KnowledgeRef[];
-  /** Model-free template this round; Phase 2b's drafter replaces it ("model"). */
-  instructions: { text: string; draftedBy: "template" | "model" };
+  /** The drafted instructions. `source`: model name or "offline-script" (absent on old blueprints). */
+  instructions: { text: string; draftedBy: "template" | "model"; source?: string };
   tests: TestsSummary;
   /** Session log at build time. */
   log: Decision[];
@@ -167,9 +183,9 @@ export interface DataVerdict {
   pushback?: {
     /** From Pushback.flaggedSources; for old sessions without it, names only (level/decidedBy absent). */
     flagged: { name: string; level?: Level; decidedBy?: "rule" | "model"; reason?: string }[];
-    choice: PushbackChoice;
-    title: string;   // SCENARIO.pushback.options[choice].title
-    rule: string;    // SCENARIO.pushback.options[choice].rule
+    choice: PushbackChoice;  // the latest
+    title: string;   // every applied choice's SCENARIO.pushback.options[c].title, in chosen order, joined "; "
+    rule: string;    // lib/pushback.ts ruleText: every applied rule, in chosen order, joined " "
   };
   /** One plain sentence, e.g. "All sources are Level 1–2. Degree audits were flagged (Level 3, by rule); you chose (a)."
    *  Level and "by rule/model" are left out when unknown (old sessions). */
@@ -189,8 +205,87 @@ export interface BlueprintScope {
 
 export interface KnowledgeRef { title: string; url: string; fetchedAt: string; level: Level }
 
-/** Phase 2b widens this union with { status: "run"; ... }. Never fake verdicts. */
-export type TestsSummary = { status: "not-run"; note: string };
+/** What the blueprint says about tests. Never fake verdicts: offline runs are labelled as such. */
+export type TestsSummary =
+  | { status: "not-run"; note: string }
+  | {
+      status: "run";
+      runId: string;
+      at: string;
+      offline: boolean;
+      /** "Offline script, not a model run" when offline; otherwise "Model run". */
+      label: string;
+      headline: string;
+      columns: RunRef["columns"];
+      failures: { testId: number; prompt: string; role: Role2; source: string; by: Verdict["by"]; reason: string; accepted?: string }[];
+      /** Slots were edited after this run. */
+      stale: boolean;
+    };
+
+// --- Phase 2b: drafts, tests, runs (contract 9.3) -------------------------------------------
+
+/** The two test columns. */
+export type Role2 = "cheap" | "capable";
+
+export interface Draft {
+  instructions: string;
+  /** Model name, or "offline-script". */
+  source: string;
+  at: string;
+  /** Derived at draft time from the requester tests ({ prompt, reference }) and appended to the instructions.
+   *  A snapshot only: requester tests are the source of truth. */
+  examples: { prompt: string; answer: string }[];
+}
+
+export interface Test {
+  id: number;
+  prompt: string;
+  mustInclude: string[];
+  mustNot: string[];
+  from: "top" | "never" | "example" | "handoff" | "requester";
+  /** Chosen by checksFor(), never by a model. */
+  checks: CheckId[];
+  /** The requester's rewrite (from === "requester" only). */
+  reference?: string;
+}
+
+export interface Verdict {
+  testId: number;
+  role: Role2;
+  /** Model name, or "offline-script". */
+  source: string;
+  pass: boolean;
+  /** answer-error: the model call failed (answer ""); judge-error: the answer exists but the judge failed. pass is false for both. */
+  by: "check" | "judge" | "answer-error" | "judge-error";
+  reason: string;
+  answer: string;
+}
+
+export interface TestRun {
+  id: string;
+  at: string;
+  /** true when every column's source is "offline-script". Offline runs are never evidence. */
+  offline: boolean;
+  columns: { role: Role2; source: string }[];
+  /** One per test x column. */
+  verdicts: Verdict[];
+}
+
+/** What the session keeps of the latest run. The full run lives in `test_runs`. */
+export interface RunRef {
+  id: string;
+  at: string;
+  offline: boolean;
+  /** unavailable = every verdict in the column is "answer-error". */
+  columns: { role: Role2; source: string; passed: number; total: number; unavailable: boolean }[];
+  /** Every verdict with pass false, including judge-error. The prompt is kept so a stale run still renders after its tests are cleared. */
+  failures: { testId: number; prompt: string; role: Role2; by: Verdict["by"]; reason: string }[];
+  /** Counts for the Phase 3 gate: true only if !offline, no *-error verdict and every verdict passes. */
+  evidence: boolean;
+  headline: string;
+}
+
+export interface Acceptance { runId: string; testId: number; role: Role2; note: string; at: string }
 
 /** One submit -> (open) -> decide cycle. Row in `reviews`. */
 export interface ReviewRound {

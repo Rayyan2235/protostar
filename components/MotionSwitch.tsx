@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useSyncExternalStore } from "react";
+import { MOTION_KEY as KEY, savedMotion } from "@/components/motion/pref";
 
 /**
  * Kiln Motion switch (KILN-AGENT §10): overrides the system's reduced-motion setting both ways.
@@ -8,7 +9,6 @@ import { useEffect, useSyncExternalStore } from "react";
  * per visitor. Server render: on. Restored from K3 (removed in K4 when nothing moved) and rebuilt
  * for K6a: no pill; the state is a word, the name stays "Motion".
  */
-const KEY = "protostar-motion";
 const EVENT = "protostar-motion";
 const QUERY = "(prefers-reduced-motion: reduce)";
 /** Used when storage is blocked, so the switch still works for this page view. */
@@ -16,10 +16,8 @@ let fallback: boolean | null = null;
 
 function read(): boolean {
   if (fallback !== null) return fallback;
-  try {
-    const saved = localStorage.getItem(KEY);
-    if (saved === "on" || saved === "off") return saved === "on";
-  } catch { /* storage blocked: use the system setting */ }
+  const saved = savedMotion(); // undefined when storage is blocked: use the system setting
+  if (saved) return saved === "on";
   return !window.matchMedia(QUERY).matches;
 }
 

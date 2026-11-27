@@ -17,6 +17,7 @@ import { Flip } from "gsap/Flip";
 import { SplitText } from "gsap/SplitText";
 import { useGSAP } from "@gsap/react";
 import type { RefObject } from "react";
+import { savedMotion } from "./pref";
 
 if (typeof window !== "undefined") gsap.registerPlugin(useGSAP, CustomEase, DrawSVGPlugin, Flip, SplitText);
 
@@ -64,7 +65,8 @@ export function space(name: `--space-${number}`): number {
  */
 export function motionOk(): boolean {
   if (typeof window === "undefined") return false;
-  const forced = document.documentElement.dataset.motion;
+  // data-motion first; on first load it isn't written yet, so the saved choice stands in.
+  const forced = document.documentElement.dataset.motion ?? savedMotion();
   if (forced === "on") return true;
   if (forced === "off") return false;
   return window.matchMedia(MOTION_OK).matches;

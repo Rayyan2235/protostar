@@ -12,12 +12,23 @@ import type { Blueprint, Decision, ReviewRound, ReviewStatus, Session, TestRun }
 
 let db: Database.Database | undefined;
 
+/**
+ * WAL by default. DELETE on Azure App Service: /home is network storage and WAL needs
+ * shared memory on a local disk. Anything else fails closed before the file is touched.
+ */
+function journalMode(): "WAL" | "DELETE" {
+  const v = process.env.SQLITE_JOURNAL_MODE || "WAL";
+  if (v !== "WAL" && v !== "DELETE") throw new Error("SQLITE_JOURNAL_MODE must be WAL or DELETE");
+  return v;
+}
+
 export function openDb(file = process.env.DATABASE_PATH || "./data/protostar.db"): Database.Database {
   if (db) return db;
+  const mode = journalMode();
   // The DB path is runtime config, not a project file: keep it out of build tracing.
   if (file !== ":memory:") mkdirSync(path.dirname(path.resolve(/*turbopackIgnore: true*/ file)), { recursive: true });
   db = new Database(file);
-  db.pragma("journal_mode = WAL");
+  db.pragma(`journal_mode = ${mode}`);
   db.exec(`
     CREATE TABLE IF NOT EXISTS sessions (
       id TEXT PRIMARY KEY,
@@ -62,6 +73,11 @@ export function openDb(file = process.env.DATABASE_PATH || "./data/protostar.db"
     CREATE INDEX IF NOT EXISTS test_runs_session ON test_runs(session_id, at);
   `);
   return db;
+}
+
+/** Health check: one trivial query on the open store. Throws when the DB can't answer. */
+export function pingDb(): void {
+  openDb().prepare("SELECT 1").get();
 }
 
 /** Test hook: use a fresh database. */

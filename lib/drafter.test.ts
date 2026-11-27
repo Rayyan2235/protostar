@@ -79,3 +79,27 @@ test("draft: requester tests become worked examples, every time it drafts", asyn
   const again = await offline(() => draft({ ...s, draft: undefined }));
   assert.deepEqual(again.examples, d.examples, "clearing a draft never loses a rewrite");
 });
+
+// --- BE-12 follow-up (plan-4 §5): the drafter reads every applied data choice, in order -------
+
+test("the drafter's prompt carries both data rules after a second choice, in chosen order", async () => {
+  const { SCENARIO } = await import("./scenario");
+  const { userMessage } = await import("./drafter");
+  const { selfreport, route } = SCENARIO.pushback.options;
+  const s = danaAtTests();
+  const two: Session = { ...s, pushback: { ...s.pushback!, choice: "route", choices: ["selfreport", "route"] } };
+  const line = userMessage(two).split("\n").find((l) => l.startsWith("Data rule: "));
+  assert.equal(line, `Data rule: ${selfreport.rule} ${route.rule}`);
+});
+
+test("the drafter's data rule is unchanged for one choice, old sessions, and none", async () => {
+  const { SCENARIO } = await import("./scenario");
+  const { userMessage } = await import("./drafter");
+  const rule = (x: Session) => userMessage(x).split("\n").find((l) => l.startsWith("Data rule: "));
+  const s = danaAtTests();
+  assert.equal(rule(s), `Data rule: ${SCENARIO.pushback.options.selfreport.rule}`);
+  const old = { ...s.pushback! };
+  delete old.choices;
+  assert.equal(rule({ ...s, pushback: old }), `Data rule: ${SCENARIO.pushback.options.selfreport.rule}`);
+  assert.equal(rule({ ...s, pushback: undefined }), "Data rule: (none)");
+});

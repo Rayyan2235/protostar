@@ -1,11 +1,11 @@
 import type { AnchorHTMLAttributes, ButtonHTMLAttributes, ReactNode } from "react";
 
-/** Kiln Button (KILN-AGENT §8). One pill per screen; outline for secondary or outside links; link for ways past. */
+/** Kiln Button (KILN-AGENT §8). One filled primary per screen (K6a: marked by fill, not by a pill); outline for secondary or outside links; link for ways past. */
 type Kind = "primary" | "outline" | "link";
 
 type Common = {
   kind?: Kind;
-  /** Destructive: the pill in danger. Say what is lost in the label. */
+  /** Destructive: the filled button in danger. Say what is lost in the label. */
   danger?: boolean;
   /** An outside destination: adds ↗ and opens in a new tab. */
   external?: boolean;
@@ -20,15 +20,15 @@ const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-3 focus-visi
 const TOUCH = "min-h-[calc(var(--space-5)+var(--space-1))]";
 
 const STYLE: Record<Kind, string> = {
-  primary: `group inline-flex items-center gap-(--space-2) hover:gap-[calc(var(--space-2)+var(--space-1))] ${TOUCH} py-(--space-1) pr-(--space-1) pl-(--space-4) rounded-(--radius-pill) text-button-ink small font-semibold transition-[gap] duration-(--dur-quick) ease-out disabled:bg-stone disabled:text-ink-muted disabled:pr-(--space-4) disabled:cursor-default`,
-  outline: `inline-flex items-center gap-(--space-2) ${TOUCH} px-(--space-3) rounded-(--radius-pill) border border-hairline bg-paper-raised small hover:bg-paper-sunk transition-colors duration-(--dur-quick) ease-out disabled:bg-stone disabled:text-ink-muted disabled:cursor-default`,
+  primary: `group inline-flex items-center gap-(--space-2) hover:gap-[calc(var(--space-2)+var(--space-1))] ${TOUCH} py-(--space-1) pr-(--space-1) pl-(--space-4) rounded-(--radius-control) text-button-ink small font-semibold transition-[gap] duration-(--dur-quick) ease-out disabled:bg-stone disabled:text-ink-muted disabled:pr-(--space-4) disabled:cursor-default`,
+  outline: `inline-flex items-center gap-(--space-2) ${TOUCH} px-(--space-3) rounded-(--radius-control) border border-hairline bg-paper-raised small hover:bg-paper-sunk transition-colors duration-(--dur-quick) ease-out disabled:bg-stone disabled:text-ink-muted disabled:cursor-default`,
   link: "small underline underline-offset-4 decoration-stone hover:decoration-ink disabled:text-ink-muted disabled:no-underline",
 };
 
 function Arrow() {
   return (
     <span data-chip="arrow" aria-hidden="true"
-      className="grid size-[calc(var(--space-5)-var(--space-1))] place-items-center rounded-(--radius-pill) bg-button-ink text-button-bg transition-transform duration-(--dur-quick) ease-out group-hover:translate-x-[calc(var(--space-1)/2)]">
+      className="grid size-[calc(var(--space-5)-var(--space-1))] place-items-center rounded-(--radius-control) bg-button-ink text-button-bg transition-transform duration-(--dur-quick) ease-out group-hover:translate-x-[calc(var(--space-1)/2)]">
       <svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 8h10M9 4l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>
     </span>
   );

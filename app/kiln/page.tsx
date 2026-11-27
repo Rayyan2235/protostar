@@ -4,14 +4,14 @@ import { notFound } from "next/navigation";
 import { Button } from "@/components/kiln/Button";
 import { Tag } from "@/components/kiln/Tag";
 import { SpecSheet } from "@/components/kiln/SpecSheet";
-import { LivingSky } from "@/components/kiln/LivingSky";
 import { TopBar } from "@/components/TopBar";
 import { TextField } from "@/components/TextField";
-import { ChatRow } from "@/components/ChatRow";
+import { EmptyState } from "@/components/EmptyState";
+import { Figure } from "@/components/Figure";
+import { FlowRail } from "@/components/FlowRail";
+import { KeyHint } from "@/components/Kbd";
 import { Notice } from "@/components/Notice";
 import { ChoiceList } from "@/components/ChoiceList";
-import { MotionSwitch } from "@/components/MotionSwitch";
-import { StartScene } from "@/components/StartScene";
 import { ResultTable } from "@/components/ResultTable";
 import { DecisionLog } from "@/components/DecisionLog";
 import { ModeBadge } from "@/components/ModeBadge";
@@ -24,23 +24,8 @@ export default function KilnPreview() {
 
   return (
     <>
-      <TopBar title="Protostar" subtitle="Kiln parts · dev preview"><MotionSwitch /></TopBar>
+      <TopBar title="Protostar" subtitle="Kiln parts · dev preview" />
       <main className="mx-auto flex w-full max-w-6xl flex-col gap-(--space-6) px-(--space-3) py-(--space-5) sm:px-(--space-6)">
-        <Section name="StartScene · the world">
-          <StartScene />
-        </Section>
-
-        <Section name="LivingSky · fixed modes">
-          <div className="grid gap-(--space-3) sm:grid-cols-4">
-            {(["dawn", "day", "dusk", "night"] as const).map((m) => (
-              <div key={m} className="flex flex-col gap-(--space-1)">
-                <LivingSky label={`${m} sky`} mode={m} className="h-(--space-8) rounded-(--radius-md)" />
-                <span className="label uppercase text-ink-muted">{m}</span>
-              </div>
-            ))}
-          </div>
-        </Section>
-
         <Section name="Button">
           <div className="flex flex-wrap items-center gap-(--space-3)">
             <Button>Submit for review</Button>
@@ -77,12 +62,21 @@ export default function KilnPreview() {
           </div>
         </Section>
 
-        <Section name="ChatRow">
-          <div className="flex flex-col gap-(--space-3)">
-            <ChatRow from="tool" quiet>Interviewer turn by offline-script.</ChatRow>
-            <ChatRow from="tool" label="Question 2">What must it never do?</ChatRow>
-            <ChatRow from="you">Never promise admission.</ChatRow>
-          </div>
+        <Section name="FlowRail · top (scope) and margin">
+          <FlowRail variant="top" step="scope" />
+          <div className="max-w-xs"><FlowRail variant="margin" /></div>
+        </Section>
+
+        <Section name="Kbd · KeyHint">
+          <KeyHint items={[["Enter", "to send"], ["Shift + Enter", "for a new line"]]} />
+        </Section>
+
+        <Section name="Figure (static)">
+          <p className="title text-ink">≈ <Figure value={112} format={(n) => `$${Math.round(n)}`} /> <span className="small font-normal text-ink-muted">[ESTIMATE NOTE]</span></p>
+        </Section>
+
+        <Section name="EmptyState">
+          <EmptyState mark="Not found." action={<Button kind="outline" href="/">Go to the start</Button>}>[ONE SENTENCE THAT SAYS WHAT HAPPENED]</EmptyState>
         </Section>
 
         <Section name="TextField">
@@ -134,7 +128,7 @@ export default function KilnPreview() {
 function Section({ name, children }: { name: string; children: ReactNode }) {
   return (
     <section className="flex flex-col gap-(--space-3)">
-      <h2 className="label uppercase text-ink-muted">{name}</h2>
+      <h2 className="label text-ink-muted">{name}</h2>
       {children}
     </section>
   );

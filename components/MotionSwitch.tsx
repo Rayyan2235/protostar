@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useSyncExternalStore } from "react";
+import { MOTION_KEY as KEY, savedMotion } from "@/components/motion/pref";
 
 /**
- * Kiln Motion switch (KILN-AGENT §10): overrides the system setting both ways. Writes
- * data-motion="on" | "off" on <html>; remembered per visitor. Server render: motion on.
+ * Kiln Motion switch (KILN-AGENT §10): overrides the system's reduced-motion setting both ways.
+ * Writes data-motion="on" | "off" on <html>, which motion/kiln.ts `motionOk()` reads; remembered
+ * per visitor. Server render: on. Restored from K3 (removed in K4 when nothing moved) and rebuilt
+ * for K6a: no pill; the state is a word, the name stays "Motion".
  */
-const KEY = "protostar-motion";
 const EVENT = "protostar-motion";
 const QUERY = "(prefers-reduced-motion: reduce)";
 /** Used when storage is blocked, so the switch still works for this page view. */
@@ -14,10 +16,8 @@ let fallback: boolean | null = null;
 
 function read(): boolean {
   if (fallback !== null) return fallback;
-  try {
-    const saved = localStorage.getItem(KEY);
-    if (saved === "on" || saved === "off") return saved === "on";
-  } catch { /* storage blocked: use the system setting */ }
+  const saved = savedMotion(); // undefined when storage is blocked: use the system setting
+  if (saved) return saved === "on";
   return !window.matchMedia(QUERY).matches;
 }
 
@@ -53,11 +53,12 @@ export function MotionSwitch() {
 
   return (
     <button type="button" aria-pressed={on} onClick={toggle}
-      className="inline-flex min-h-[calc(var(--space-5)+var(--space-1))] items-center gap-(--space-2) rounded-(--radius-pill) px-(--space-2) small text-ink-soft hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-accent">
-      <span aria-hidden="true" className={`relative h-(--space-3) w-[calc(var(--space-4)+var(--space-1))] rounded-(--radius-pill) border border-ink-muted transition-colors duration-(--dur-quick) ease-out ${on ? "bg-accent" : "bg-paper-sunk"}`}>
-        <span className={`absolute top-1/2 size-[calc(var(--space-3)-var(--space-1))] -translate-y-1/2 rounded-(--radius-pill) transition-[left] duration-(--dur-quick) ease-out ${on ? "left-[calc(100%-var(--space-3)+var(--space-1)/2)] bg-paper" : "left-[calc(var(--space-1)/2)] bg-ink-muted"}`} />
-      </span>
+      className="hidden min-h-[calc(var(--space-5)+var(--space-1))] items-center gap-(--space-2) rounded-(--radius-control) px-(--space-2) small text-ink-soft hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-accent sm:inline-flex">
       Motion
+      {/* The state in a word, beside the name; the name itself never changes. */}
+      <span aria-hidden="true" className={`label rounded-(--radius-control) border px-(--space-1) ${on ? "border-accent text-accent" : "border-hairline text-ink-muted"}`}>
+        {on ? "on" : "off"}
+      </span>
     </button>
   );
 }

@@ -4,11 +4,8 @@ import assert from "node:assert/strict";
 import { renderToStaticMarkup } from "react-dom/server";
 import { TopBar } from "./TopBar";
 import { TextField } from "./TextField";
-import { ChatRow } from "./ChatRow";
 import { Notice } from "./Notice";
 import { ChoiceList } from "./ChoiceList";
-import { MotionSwitch } from "./MotionSwitch";
-import { START_SKY, StartScene } from "./StartScene";
 
 const count = (html: string, needle: string) => html.split(needle).length - 1;
 
@@ -45,13 +42,6 @@ test("TextField hint is described too, and a hidden label stays in the markup", 
   assert.match(html, /<label[^>]*class="[^"]*sr-only/);
 });
 
-test("ChatRow marks who said it", () => {
-  assert.match(renderToStaticMarkup(<ChatRow from="you">Can I switch?</ChatRow>), /data-from="you"/);
-  const q = renderToStaticMarkup(<ChatRow from="tool" label="Question 2">What must it never do?</ChatRow>);
-  assert.match(q, /data-from="tool"/);
-  assert.match(q, /Question 2/);
-});
-
 test("Notice requires text and says its tone in words for danger", () => {
   assert.throws(() => renderToStaticMarkup(<Notice tone="danger">{""}</Notice>), /needs text/);
   const html = renderToStaticMarkup(<Notice tone="danger" title="Hold on">Level 3 data</Notice>);
@@ -77,19 +67,3 @@ test("ChoiceList is a radiogroup of radios with aria-checked and one tab stop", 
   assert.equal(count(html, 'tabindex="0"'), 1);
 });
 
-test("MotionSwitch is a toggle button, on by default on the server", () => {
-  const html = renderToStaticMarkup(<MotionSwitch />);
-  assert.match(html, /<button[^>]*aria-pressed="true"/);
-  assert.match(html, /Motion/);
-});
-
-test("StartScene is pinned to night (Lead, 2026-11-12): the world is a night sky", () => {
-  assert.equal(START_SKY, "night");
-});
-
-test("StartScene server render is the fixed default: night and still", () => {
-  const html = renderToStaticMarkup(<StartScene />);
-  assert.match(html, /data-sky="night"/);
-  assert.doesNotMatch(html, /<div[^>]*\sdata-live/);
-  assert.match(html, /role="img"/);
-});

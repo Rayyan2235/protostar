@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, type KeyboardEvent, type ReactNode } from "react";
+import { useLayoutEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
+import { Flip, kilnTiming, motionOk } from "@/components/motion/kiln";
 
 export interface Choice<V extends string> {
   value: V;
@@ -24,25 +25,45 @@ export function ChoiceList<V extends string>({ label, options, value, onChange, 
   disabled?: boolean;
 }) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
+  const group = useRef<HTMLDivElement>(null);
+  /** Where the highlight sat before a change, so it can glide to the new row (GSAP Flip). */
+  const before = useRef<Flip.FlipState | null>(null);
   const current = Math.max(0, options.findIndex((o) => o.value === value));
+
+  const choose = (v: V) => {
+    const hl = group.current?.querySelector('[data-flip-id="choice-highlight"]');
+    if (hl && v !== value && motionOk()) before.current = Flip.getState(hl);
+    onChange?.(v);
+  };
+
+  useLayoutEffect(() => {
+    const state = before.current;
+    before.current = null;
+    const hl = group.current?.querySelector('[data-flip-id="choice-highlight"]');
+    if (!state || !hl) return;
+    const t = kilnTiming();
+    Flip.from(state, { targets: hl, duration: t.quick, ease: t.ease });
+  }, [value]);
 
   const onKey = (e: KeyboardEvent, i: number) => {
     const step = e.key === "ArrowDown" || e.key === "ArrowRight" ? 1 : e.key === "ArrowUp" || e.key === "ArrowLeft" ? -1 : 0;
     if (!step) return;
     e.preventDefault();
     const next = (i + step + options.length) % options.length;
-    onChange?.(options[next].value);
+    choose(options[next].value);
     refs.current[next]?.focus();
   };
 
   return (
-    <div role="radiogroup" aria-label={label} className="border-t border-hairline">
+    <div ref={group} role="radiogroup" aria-label={label} className="border-t border-hairline">
       {options.map((o, i) => {
         const checked = i === current;
         return (
           <button key={o.value} ref={(el) => { refs.current[i] = el; }} type="button" role="radio" aria-checked={checked}
-            tabIndex={checked ? 0 : -1} disabled={disabled} onClick={() => onChange?.(o.value)} onKeyDown={(e) => onKey(e, i)}
-            className={`flex w-full items-start gap-(--space-3) border-b border-hairline px-(--space-2) py-(--space-3) text-left transition-colors duration-(--dur-quick) ease-out focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent disabled:cursor-default ${checked ? "bg-paper-raised" : "hover:bg-paper-raised"}`}>
+            tabIndex={checked ? 0 : -1} disabled={disabled} onClick={() => choose(o.value)} onKeyDown={(e) => onKey(e, i)}
+            className={`relative isolate flex w-full items-start gap-(--space-3) border-b border-hairline px-(--space-2) py-(--space-3) text-left transition-colors duration-(--dur-quick) ease-out focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent disabled:cursor-default ${checked ? "" : "hover:bg-paper-raised"}`}>
+            {/* One highlight, always under the checked row; on a change it glides to the new row. */}
+            {checked && <span aria-hidden="true" data-flip-id="choice-highlight" className="absolute inset-0 -z-10 bg-paper-raised" />}
             <span aria-hidden="true" className={`mt-(--space-1) grid size-(--space-3) shrink-0 place-items-center rounded-(--radius-pill) border-2 ${checked ? "border-accent" : "border-ink-muted"}`}>
               {checked && <span className="size-(--space-2) rounded-(--radius-pill) bg-accent" />}
             </span>

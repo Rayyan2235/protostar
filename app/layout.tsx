@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Figtree, Fraunces, Geist_Mono } from "next/font/google";
+import { PaperGrain } from "@/components/PaperGrain";
 import "./globals.css";
 
 // Kiln type (KILN-AGENT §4). tokens.css reads these variables first in --font-display/body/mono.
@@ -32,7 +33,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       data-theme="light"
       className={`${fraunces.variable} ${figtree.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <PaperGrain />
+        {children}
+      </body>
     </html>
   );
 }

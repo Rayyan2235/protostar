@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { Blueprint, ReviewView } from "@/lib/types";
 import { BlueprintView, ExportBar, SourceItem } from "./blueprint";
 import { ModeBadge } from "./ModeBadge";
-import { DecisionForm, Rounds, StatusNotice } from "@/app/review/[id]/reviewer";
+import { DecisionForm, ReviewNotFound, Rounds, StatusNotice } from "@/app/review/[id]/reviewer";
 
 const count = (html: string, needle: string) => html.split(needle).length - 1;
 const text = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
@@ -60,10 +60,24 @@ test("BlueprintView leads with a SpecSheet of 7 facts: version, title, date", ()
   assert.match(text(html), /Waiting for a decision/);
 });
 
+test("blueprint sections separate with space, not rule lines (Kiln §5)", () => {
+  const html = renderToStaticMarkup(<BlueprintView blueprint={bp()} audience="reviewer" />);
+  assert.doesNotMatch(html, /<section[^>]*border-t/);
+  assert.doesNotMatch(html, /<details[^>]*border-t/);
+});
+
 test("the cost sits next to its estimate note", () => {
   const html = renderToStaticMarkup(<BlueprintView blueprint={bp()} audience="reviewer" />);
   const row = html.match(/Est\. cost \/ month<\/dt>[\s\S]*?<\/dd>/)?.[0] ?? "";
   assert.match(row, /\$12\.50/);
+  assert.match(row, /Not a quote\./);
+});
+
+test("blueprint cost (K5a): a static Figure, no live region, the note beside it", () => {
+  const html = renderToStaticMarkup(<BlueprintView blueprint={bp()} audience="reviewer" />);
+  const row = html.match(/Est\. cost \/ month<\/dt>[\s\S]*?<\/dd>/)?.[0] ?? "";
+  assert.match(row, /tabular-nums/);
+  assert.doesNotMatch(html, /aria-live/);
   assert.match(row, /Not a quote\./);
 });
 
@@ -106,12 +120,13 @@ test("data levels show the word Level, not a bare code", () => {
   assert.doesNotMatch(html, /title="/);
 });
 
-test("ExportBar has three outline buttons and no pill", () => {
+test("ExportBar has three outline buttons, no filled primary, no live region of its own (K6b: the StatusStrip speaks)", () => {
   const html = renderToStaticMarkup(<ExportBar blueprint={bp()} />);
   assert.equal(count(html, "<button"), 3);
   assert.equal(count(html, 'data-chip="arrow"'), 0);
   assert.match(html, /Download Markdown/);
-  assert.match(html, /role="status"/);
+  assert.doesNotMatch(html, /role="status"|aria-live/);
+  assert.match(html, /aria-describedby="ai-studio-note"/);
 });
 
 test("ModeBadge says the mode in words; live models get the live dot", () => {
@@ -133,18 +148,33 @@ const view = (over: Partial<ReviewView> = {}): ReviewView => ({
   ...over,
 } as ReviewView);
 
-test("DecisionForm: Approve is the one pill; changes and reject are outlined", () => {
-  const html = renderToStaticMarkup(<DecisionForm enabled busy={false} onDecide={async () => true} />);
+test("DecisionForm: Approve is the one filled primary; changes and reject are outlined", () => {
+  const html = renderToStaticMarkup(<DecisionForm version={2} enabled busy={false} onDecide={async () => true} />);
   assert.equal(count(html, 'data-chip="arrow"'), 1);
   assert.equal(count(html, "<button"), 3);
-  assert.match(html, /<label[^>]*for="review-note"/);
-  assert.match(html, /<textarea[^>]*id="review-note"/);
+  // K6b: each decision morphs into its own note panel (k6b-morph.test.tsx).
+  const open = renderToStaticMarkup(<DecisionForm version={2} enabled busy={false} onDecide={async () => true} initialOpen="changes" />);
+  assert.match(open, /<label[^>]*for="review-note"/);
+  assert.match(open, /<textarea[^>]*id="review-note"/);
+});
+
+test("reviewer note (K5a, K6b): autosize; Enter is a new line; Kbd only on Request changes (Approve/Reject have none)", () => {
+  const html = renderToStaticMarkup(<DecisionForm version={2} enabled busy={false} onDecide={async () => true} initialOpen="approved" />);
+  assert.match(html, /<textarea[^>]*id="review-note"[^>]*class="[^"]*resize-none/);
+  assert.equal(count(html, "<kbd"), 0);
+});
+
+test("a bad review link is a type-only EmptyState with one action", () => {
+  const html = renderToStaticMarkup(<ReviewNotFound />);
+  assert.match(html, /<h1[^>]*display/);
+  assert.equal(count(html, "<button") + count(html, "<a "), 1);
+  assert.match(text(html), /review link doesn/);
 });
 
 test("DecisionForm disabled: no pill arrow, controls disabled, says why", () => {
-  const html = renderToStaticMarkup(<DecisionForm enabled={false} busy={false} onDecide={async () => true} />);
+  const html = renderToStaticMarkup(<DecisionForm version={2} enabled={false} busy={false} onDecide={async () => true} />);
   assert.equal(count(html, 'data-chip="arrow"'), 0);
-  assert.equal(count(html, 'disabled=""'), 4);
+  assert.equal(count(html, 'disabled=""'), 3);
   assert.match(text(html), /Nothing to decide right now\./);
 });
 

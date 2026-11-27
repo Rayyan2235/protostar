@@ -5,9 +5,11 @@ import type { ReviewDecision, ReviewRound, ReviewView } from "@/lib/types";
 import type { ReviewAction, ReviewResponse } from "@/lib/api";
 import { BlueprintView, ExportBar } from "@/components/blueprint";
 import { Button } from "@/components/kiln/Button";
+import { EmptyState } from "@/components/EmptyState";
 import { ModeBadge } from "@/components/ModeBadge";
+import { StatusProvider } from "@/components/StatusStrip";
 import { Notice } from "@/components/Notice";
-import { TextField } from "@/components/TextField";
+import { MorphNote } from "@/components/MorphNote";
 import { TopBar } from "@/components/TopBar";
 import { POLL_MS } from "@/app/studio";
 
@@ -32,14 +34,14 @@ const OUTCOME: Record<ReviewRound["status"], string> = {
 /** Page frame shared by every state: TopBar, then content at the app-shell width. */
 function Shell({ mode, children }: { mode?: string; children: ReactNode }) {
   return (
-    <>
+    <StatusProvider>
       <TopBar title="Protostar" subtitle="Blueprint review · prototype">
         {mode && <ModeBadge mode={mode} />}
       </TopBar>
       <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-(--space-5) px-(--space-3) py-(--space-5) sm:px-(--space-6)">
         {children}
       </main>
-    </>
+    </StatusProvider>
   );
 }
 
@@ -116,11 +118,7 @@ export default function Reviewer({ reviewId }: { reviewId: string }) {
   if (missing) {
     return (
       <Shell mode={mode}>
-        {/* Empty state without a backdrop (plan-kiln §2): heading-2 and one sentence. */}
-        <div role="alert" className="flex max-w-xl flex-col gap-(--space-2) py-(--space-6)">
-          <h1 className="heading-2 text-ink">This review link doesn&apos;t exist.</h1>
-          <p className="body text-ink-soft">Check the link with the person who sent it.</p>
-        </div>
+        <ReviewNotFound />
       </Shell>
     );
   }
@@ -148,13 +146,22 @@ export default function Reviewer({ reviewId }: { reviewId: string }) {
           </div>
           {error && <Notice tone="danger">{error}</Notice>}
           {/* Only while a decision is open; a decided version shows its status alone. Keyed by version so v2 starts empty. */}
-          {view.status === "pending" && <DecisionForm key={view.blueprint.version} enabled busy={busy} onDecide={decide} />}
+          {view.status === "pending" && <DecisionForm key={view.blueprint.version} version={view.blueprint.version} enabled busy={busy} onDecide={decide} />}
         </aside>
         <div className="min-w-0 lg:col-span-8">
           <Rounds view={view} />
         </div>
       </div>
     </Shell>
+  );
+}
+
+/** A bad review link: type-only empty state, one way forward. */
+export function ReviewNotFound() {
+  return (
+    <EmptyState mark="Not found." action={<Button kind="outline" href="/">Go to the start</Button>}>
+      This review link doesn&apos;t exist. Check the link with the person who sent it.
+    </EmptyState>
   );
 }
 
@@ -172,38 +179,72 @@ export function StatusNotice({ view }: { view: ReviewView }) {
   return <Notice tone={tone} title={head}>{body}</Notice>;
 }
 
-/** The decision panel: the one card on the page, because it is the thing you act on. Approve is the pill. */
-export function DecisionForm({ enabled, busy, onDecide }: {
-  enabled: boolean; busy: boolean; onDecide: (s: ReviewDecision, note: string) => Promise<boolean>;
+/** Each decision's panel. Approve and Reject end the review, so they have no shortcut (K6b). */
+export const DECISIONS = {
+  approved: { trigger: "Approve", prompt: "Note to the requester (optional)", submit: (v: number) => `Approve v${v}`, submitKey: false, required: false },
+  changes: { trigger: "Request changes", prompt: "What should change? (sent to the requester)", submit: () => "Request changes", submitKey: true, required: true },
+  rejected: { trigger: "Reject", prompt: "Why reject? (sent to the requester)", submit: (v: number) => `Reject v${v}`, submitKey: false, required: true },
+} as const satisfies Record<ReviewDecision, unknown>;
+
+const MISSING_NOTE: Partial<Record<ReviewDecision, string>> = {
+  changes: "Say what should change before you request changes.",
+  rejected: "Say why before you reject it.",
+};
+
+/** What a submit does: send with the trimmed note, or say why not. Approve's note is optional. */
+export function decisionSubmit(status: ReviewDecision, note: string):
+  { send: { status: ReviewDecision; note: string } } | { error: string } {
+  const text = note.trim();
+  if (DECISIONS[status].required && !text) return { error: MISSING_NOTE[status]! };
+  return { send: { status, note: text } };
+}
+
+const ORDER: ReviewDecision[] = ["approved", "changes", "rejected"];
+
+/**
+ * The decision panel: the one card on the page, because it is the thing you act on. Each decision
+ * morphs into its own note panel with one submit; while one is open the other two are hidden, so it
+ * has one target. Approve is the filled primary. Typed notes survive a close.
+ */
+export function DecisionForm({ version, enabled, busy, onDecide, initialOpen }: {
+  version: number; enabled: boolean; busy: boolean; onDecide: (s: ReviewDecision, note: string) => Promise<boolean>;
+  /** Server-render a panel open (tests). The page always starts closed. */
+  initialOpen?: ReviewDecision;
 }) {
-  const [note, setNote] = useState("");
-  const [missingNote, setMissingNote] = useState<string>();
-  const field = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
+  const [open, setOpen] = useState<ReviewDecision | undefined>(initialOpen);
+  const [notes, setNotes] = useState<Record<ReviewDecision, string>>({ approved: "", changes: "", rejected: "" });
+  const [error, setError] = useState<string>();
 
   const submit = async (status: ReviewDecision) => {
-    const text = note.trim();
-    if (status !== "approved" && !text) {
-      setMissingNote(status === "changes" ? "Say what should change before you request changes." : "Say why before you reject it.");
-      field.current?.focus();
+    const r = decisionSubmit(status, notes[status]);
+    if ("error" in r) {
+      setError(r.error);
+      document.getElementById("review-note")?.focus();
       return;
     }
-    setMissingNote(undefined);
-    if (await onDecide(status, text)) setNote("");
+    setError(undefined);
+    if (await onDecide(r.send.status, r.send.note)) setNotes((n) => ({ ...n, [status]: "" }));
   };
 
   const off = !enabled || busy;
   return (
-    <form className="flex flex-col gap-(--space-3) rounded-(--radius-md) border border-hairline bg-paper-raised p-(--space-3)" onSubmit={(e) => e.preventDefault()}>
+    <div className="flex flex-col gap-(--space-3) rounded-(--radius-md) border border-hairline bg-paper-raised p-(--space-3)">
       <h2 className="title text-ink">Your decision</h2>
-      <TextField id="review-note" label="Note to the requester (required to request changes or reject)" multiline rows={3}
-        value={note} onChange={setNote} disabled={!enabled} maxLength={2000} error={missingNote} fieldRef={field} />
       <div className="flex flex-wrap items-center gap-(--space-2)">
-        <Button disabled={off} onClick={() => submit("approved")}>Approve</Button>
-        <Button kind="outline" disabled={off} onClick={() => submit("changes")}>Request changes</Button>
-        <Button kind="outline" danger disabled={off} onClick={() => submit("rejected")}>Reject</Button>
+        {ORDER.filter((s) => !open || open === s).map((s) => {
+          const d = DECISIONS[s];
+          return (
+            <MorphNote key={s} id="review-note" triggerId={`decide-${s}-btn`} name={`morph-decision-${s}`}
+              open={open === s} onOpenChange={(o) => { setOpen(o ? s : undefined); setError(undefined); }}
+              trigger={d.trigger} triggerKind={s === "approved" ? "primary" : "outline"} triggerDanger={s === "rejected"} disabled={off}
+              prompt={d.prompt} value={notes[s]} onChange={(v) => setNotes((n) => ({ ...n, [s]: v }))} error={open === s ? error : undefined}
+              maxLength={2000} submitLabel={d.submit(version)} submitDanger={s === "rejected"}
+              submitKey={d.submitKey} required={d.required} busy={off} onSubmit={() => submit(s)} />
+          );
+        })}
       </div>
       {!enabled && <p className="small font-normal text-ink-muted">Nothing to decide right now.</p>}
-    </form>
+    </div>
   );
 }
 
@@ -211,7 +252,7 @@ export function DecisionForm({ enabled, busy, onDecide }: {
 export function Rounds({ view }: { view: ReviewView }) {
   return (
     <section className="flex flex-col gap-(--space-2)">
-      <h2 className="label uppercase text-ink-muted">Rounds ({view.rounds.length})</h2>
+      <h2 className="label text-ink-muted">Rounds ({view.rounds.length})</h2>
       <ol>
         {view.rounds.map((r) => (
           <li key={r.version} className="border-b border-hairline py-(--space-2)">

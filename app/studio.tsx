@@ -1,22 +1,28 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { SLOT_KEYS, SLOT_LABELS, type Blueprint, type Decision, type PushbackChoice, type Session, type SessionReview, type SlotKey } from "@/lib/types";
 import type { Catalog } from "@/lib/engine";
 import { reviewPath, type ClientAction, type SessionResponse } from "@/lib/api";
 import { SCENARIO } from "@/lib/scenario";
 import { BlueprintView, ExportBar, SourceItem } from "@/components/blueprint";
 import { Button } from "@/components/kiln/Button";
-import { Tag } from "@/components/kiln/Tag";
-import { ChatRow } from "@/components/ChatRow";
+import { CopyButton } from "@/components/CopyButton";
 import { DecisionLog } from "@/components/DecisionLog";
+import { EmptyState } from "@/components/EmptyState";
+import { FlowRail } from "@/components/FlowRail";
+import { KeyHint, submitOnEnter } from "@/components/Kbd";
 import { ModeBadge } from "@/components/ModeBadge";
-import { MotionSwitch } from "@/components/MotionSwitch";
+import { MorphNote } from "@/components/MorphNote";
 import { Notice } from "@/components/Notice";
-import { StartScene } from "@/components/StartScene";
+import { StatusProvider, useStatus } from "@/components/StatusStrip";
 import { TextField } from "@/components/TextField";
 import { TopBar } from "@/components/TopBar";
 import { ScopePicker, ScopeSummary } from "./scope";
+import { InkMark } from "@/components/InkMark";
+import { gsap, kilnTiming, motionOk } from "@/components/motion/kiln";
+import { useLineReveal, useRiseIn } from "@/components/motion/reveal";
+import { foldFrom, foldInto } from "@/components/motion/fold";
 
 type ResolveChoice = PushbackChoice | "keep";
 
@@ -58,7 +64,16 @@ async function call(path: string, body?: unknown): Promise<SessionResponse> {
  * The requester's studio. `initialId` comes from ?s= (read on the server), so a shared link renders
  * a busy state instead of flashing the idea form. `pending` is the Suspense fallback while the link is read.
  */
-export default function Studio({ initialId, pending }: { initialId?: string; pending?: boolean }) {
+export default function Studio(props: { initialId?: string; pending?: boolean }) {
+  return (
+    <StatusProvider>
+      <StudioShell {...props} />
+    </StatusProvider>
+  );
+}
+
+function StudioShell({ initialId, pending }: { initialId?: string; pending?: boolean }) {
+  const { say } = useStatus();
   const [session, setSession] = useState<Session>();
   const [blueprint, setBlueprint] = useState<Blueprint>();
   const [mode, setMode] = useState<string>();
@@ -67,6 +82,8 @@ export default function Studio({ initialId, pending }: { initialId?: string; pen
   const [error, setError] = useState<string>();
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(Boolean(initialId || pending));
+  /** ?s= named a session this server doesn't have. */
+  const [missing, setMissing] = useState(false);
   /** Selector to focus once the current action has rendered. `soft`: only if focus was lost (poll updates). */
   const focusNext = useRef<{ sel: string; soft?: boolean } | null>(null);
 
@@ -86,7 +103,10 @@ export default function Studio({ initialId, pending }: { initialId?: string; pen
   useEffect(() => {
     if (!initialId) return;
     call(`/api/sessions/${initialId}`)
-      .then(apply)
+      .then((r) => {
+        apply(r);
+        if (!r.session) setMissing(true);
+      })
       .catch(() => setError("Network error. Reload the page."))
       .finally(() => setLoading(false));
   }, [initialId, apply]);
@@ -122,21 +142,30 @@ export default function Studio({ initialId, pending }: { initialId?: string; pen
     }
   });
 
-  const run = async (p: Promise<SessionResponse>, focus?: string) => {
+  const run = async (p: Promise<SessionResponse>, focus?: string): Promise<SessionResponse | undefined> => {
     setBusy(true);
     try {
       const r = await p;
       apply(r);
       if (r.session) focusNext.current = { sel: focus ?? nextFocus(r.session) };
+      return r;
     } catch {
       setError("Network error. Try again.");
+      return undefined;
     } finally {
       setBusy(false);
     }
   };
 
   const start = (idea: string) => run(call("/api/sessions", { idea })).then(() => setText(""));
-  const send = (a: ClientAction, focus?: string) => session && run(call(`/api/sessions/${session.id}`, a), focus);
+  const send = async (a: ClientAction, focus?: string) => {
+    if (!session) return;
+    const r = await run(call(`/api/sessions/${session.id}`, a), focus);
+    // Transient results go to the StatusStrip (closed list); errors stay in place as alerts.
+    if (!r?.session || r.error) return;
+    if (a.type === "edit") say("Saved");
+    if (a.type === "submit" && r.session.review) say(`Sent v${r.session.review.version} to the reviewer`);
+  };
   const answer = (value: string) => {
     if (!value.trim()) return;
     setText("");
@@ -148,6 +177,7 @@ export default function Studio({ initialId, pending }: { initialId?: string; pen
     setBlueprint(undefined);
     setError(undefined);
     setLoading(false);
+    setMissing(false);
     focusNext.current = { sel: "#idea" };
   };
 
@@ -155,7 +185,6 @@ export default function Studio({ initialId, pending }: { initialId?: string; pen
     <>
       <TopBar title="Protostar" subtitle="Agent spec builder · prototype">
         {mode && <ModeBadge mode={mode} />}
-        <MotionSwitch />
         {session && <Button kind="link" onClick={startOver}>New idea</Button>}
       </TopBar>
 
@@ -164,17 +193,20 @@ export default function Studio({ initialId, pending }: { initialId?: string; pen
           <div role="status" aria-busy="true" className="small font-normal text-ink-muted">
             {error ?? "Loading your session…"}
           </div>
+        ) : !session && missing ? (
+          <SessionNotFound onNew={startOver} />
         ) : !session ? (
           <StartScreen text={text} setText={setText} busy={busy} error={error} onStart={start} />
         ) : (
+          <div className="flex flex-1 flex-col gap-(--space-5)">
+          <FlowRail variant="top" step={session.step} />
           <div className="grid flex-1 gap-(--space-5) lg:grid-cols-12">
             <section aria-label={BLUEPRINT_STEPS.includes(session.step) ? "Blueprint" : "Interview"} className="flex min-w-0 flex-col gap-(--space-4) lg:col-span-8">
               {BLUEPRINT_STEPS.includes(session.step) ? (
                 <BlueprintStep session={session} blueprint={blueprint} busy={busy} error={error} send={send} onNewIdea={startOver} />
               ) : (
                 <>
-                  <Transcript log={session.log} />
-                  <div className="flex flex-col gap-(--space-3) border-t border-hairline pt-(--space-3)">
+                  <div className="flex flex-col gap-(--space-3)">
                     {error && (session.step === "interview" ? (
                       <Notice tone="danger" actions={<Button kind="outline" onClick={() => send({ type: "retry" })} disabled={busy}>Retry</Button>}>
                         The interviewer didn&apos;t answer: {error}
@@ -190,13 +222,15 @@ export default function Studio({ initialId, pending }: { initialId?: string; pen
                       <Composer session={session} busy={busy} text={text} setText={setText} onAnswer={answer} onResolve={(choice) => send({ type: "resolve", choice })} />
                     )}
                   </div>
+                  <Ledger log={session.log} collapsed={session.step !== "interview"} />
                 </>
               )}
             </section>
 
-            <aside aria-label="Spec so far" className="flex min-w-0 flex-col gap-(--space-4) lg:col-span-4">
+            <aside aria-label="Spec so far" className="flex min-w-0 flex-col gap-(--space-5) lg:col-span-4">
               <SpecPanel session={session} busy={busy} onEdit={(key, value) => send({ type: "edit", key, value }, `#edit-${key}-btn`)} />
             </aside>
+          </div>
           </div>
         )}
       </main>
@@ -204,23 +238,34 @@ export default function Studio({ initialId, pending }: { initialId?: string; pen
   );
 }
 
-/** Empty state (KILN-AGENT §6): the framed world, a heading-2, one sentence, the field, one pill. */
+/**
+ * Start (K4, Rayyan): the loud moment is type. A display statement straight on paper, left-aligned,
+ * the field and one pill in the main column; a quiet margin with the flow strip and one honest aside.
+ */
 function StartScreen({ text, setText, busy, error, onStart }: {
   text: string; setText: (s: string) => void; busy: boolean; error?: string; onStart: (s: string) => void;
 }) {
+  // The screen's one loud moment: the statement rises in by lines, once.
+  const statement = useRef<HTMLHeadingElement>(null);
+  useLineReveal(statement, "start", "enter");
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-(--space-4)">
-      <StartScene />
-      <form className="flex flex-col gap-(--space-3)" onSubmit={(e) => { e.preventDefault(); onStart(text); }}>
-        <h1 className="heading-2 text-ink">What do you keep answering over and over?</h1>
-        <TextField id="idea" label="Describe the agent you wish existed, in one sentence." multiline rows={3} maxLength={1000}
-          value={text} onChange={setText} placeholder="e.g. Something that answers change-of-major questions" />
+    <div className="grid gap-(--space-6) lg:grid-cols-12 lg:pt-(--space-5)">
+      <form className="flex flex-col gap-(--space-4) lg:col-span-7" onSubmit={(e) => { e.preventDefault(); onStart(text); }}>
+        <h1 ref={statement} className="display text-ink">What do you keep answering <span className="text-ink-muted">over and over?</span></h1>
+        <TextField id="idea" label="Describe the agent you wish existed, in one sentence." multiline autosize rows={3} maxLength={1000}
+          value={text} onChange={setText} placeholder="e.g. Something that answers change-of-major questions"
+          onKeyDown={submitOnEnter({ empty: !text.trim(), busy }, () => onStart(text))} />
         {error && <Notice tone="danger">{error}</Notice>}
         <div className="flex flex-wrap items-center gap-(--space-3)">
           <Button type="submit" disabled={busy || !text.trim()}>{busy ? "Starting…" : "Start the interview"}</Button>
           <Button kind="link" onClick={() => setText(EXAMPLE_IDEA)}>Use Dana&apos;s example</Button>
         </div>
+        <KeyHint items={[["Enter", "to start"], ["Shift + Enter", "for a new line"]]} />
       </form>
+      <aside aria-label="How it works" className="flex flex-col gap-(--space-4) lg:col-span-3 lg:col-start-10 lg:pt-(--space-3)">
+        <FlowRail variant="margin" />
+        <p className="small font-normal text-ink-muted">Prototype. Public, Level 1–2 data only. Never student records.</p>
+      </aside>
     </div>
   );
 }
@@ -238,7 +283,7 @@ export function TestsStep({ busy, send }: { busy: boolean; send: (a: ClientActio
 }
 
 /** Main panel for the blueprint, review and done steps. */
-function BlueprintStep({ session, blueprint, busy, error, send, onNewIdea }: {
+export function BlueprintStep({ session, blueprint, busy, error, send, onNewIdea }: {
   session: Session; blueprint?: Blueprint; busy: boolean; error?: string;
   send: (a: ClientAction) => unknown; onNewIdea: () => void;
 }) {
@@ -270,7 +315,8 @@ function BlueprintStep({ session, blueprint, busy, error, send, onNewIdea }: {
       {blueprint ? (
         <div className="flex flex-col gap-(--space-4)">
           <BlueprintView blueprint={blueprint} audience="requester" status={status} />
-          <ExportBar blueprint={blueprint} />
+          {/* The live draft has the ExportBar in its Export tab; a submitted blueprint keeps it under the sheet. */}
+          {!blueprint.draft && <ExportBar blueprint={blueprint} />}
         </div>
       ) : (
         <p className="small font-normal text-ink-muted">Loading the blueprint…</p>
@@ -279,17 +325,14 @@ function BlueprintStep({ session, blueprint, busy, error, send, onNewIdea }: {
   );
 }
 
-function ReviewCard({ review: r }: { review: SessionReview }) {
-  const [copied, setCopied] = useState("");
-  const link = `${window.location.origin}${reviewPath(r.reviewId)}`;
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(link);
-      setCopied("Link copied.");
-    } catch {
-      setCopied("Couldn't copy. Select the link and copy it.");
-    }
-  };
+const noSubscribe = () => () => {};
+/** The page origin; "" in the server markup (no window during render). */
+function useOrigin() {
+  return useSyncExternalStore(noSubscribe, () => window.location.origin, () => "");
+}
+
+export function ReviewCard({ review: r }: { review: SessionReview }) {
+  const link = `${useOrigin()}${reviewPath(r.reviewId)}`;
   return (
     <section aria-labelledby="review-waiting" className="flex flex-col gap-(--space-2) rounded-(--radius-md) border border-hairline bg-paper-raised p-(--space-3)">
       <h2 id="review-waiting" className="title text-accent">v{r.version} submitted · waiting for review</h2>
@@ -299,9 +342,9 @@ function ReviewCard({ review: r }: { review: SessionReview }) {
       <div className="flex flex-wrap items-end gap-(--space-2)">
         <TextField id="review-link" label="Reviewer link" hideLabel readOnly value={link} className="min-w-0 flex-1"
           onFocus={(e) => e.currentTarget.select()} />
-        <Button id="copy-link" kind="outline" onClick={copy}>Copy link</Button>
+        <CopyButton id="copy-link" label="Copy link" text={() => link} message="Copied the review link"
+          failText="Couldn't copy. Select the text and copy it yourself." />
       </div>
-      <span role="status" className="label text-ink-soft">{copied}</span>
     </section>
   );
 }
@@ -316,53 +359,150 @@ export function DoneBanner({ review: r, onNewIdea }: { review: SessionReview; on
   );
 }
 
-const YOU: Decision["kind"][] = ["idea", "answer", "resolve", "edit", "scope"];
-const TOOL_LABEL: Partial<Record<NonNullable<Decision["kind"]>, string>> = { flag: "Flagged", blocked: "Blocked", done: "Done" };
-
-/** The interview so far: the requester's words on paper-sunk, the tool's questions numbered. */
-export function Transcript({ log }: { log: Decision[] }) {
-  const end = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    end.current?.scrollIntoView({ behavior: "smooth", block: "end" }); // returns a Promise in newer browsers; don't return it
-  }, [log.length]);
-  const qNum = log.map((_, i) => log.slice(0, i + 1).filter((d) => d.kind === "question").length);
+/** A missing ?s= session: type-only empty state with one way forward. */
+export function SessionNotFound({ onNew }: { onNew: () => void }) {
   return (
-    <div className="flex flex-col gap-(--space-3)" aria-live="polite">
-      {log.map((d, i) => {
-        if (d.kind && YOU.includes(d.kind)) return <ChatRow key={i} from="you">{d.what}</ChatRow>;
-        if (d.kind === "question") return <ChatRow key={i} from="tool" label={`Question ${qNum[i]}`}>{d.what}</ChatRow>;
-        const label = d.kind && TOOL_LABEL[d.kind];
-        if (label) return <ChatRow key={i} from="tool" label={label}>{d.what}</ChatRow>;
-        return <ChatRow key={i} from="tool" quiet>{d.what}</ChatRow>;
-      })}
-      <div ref={end} />
-    </div>
+    <EmptyState mark="Not found." action={<Button onClick={onNew}>Start a new idea</Button>}>
+      That link doesn&apos;t match a session on this server.
+    </EmptyState>
   );
 }
 
-function Composer({ session, busy, text, setText, onAnswer, onResolve }: {
+type LedgerRow = { q: string; a?: string; tool?: boolean };
+
+/** Earlier Q&A from the log, newest first. The unanswered current question is left out. */
+function ledgerRows(log: Decision[]): LedgerRow[] {
+  const rows: LedgerRow[] = [];
+  let asked: string | undefined;
+  for (const d of log) {
+    if (d.kind === "idea") rows.push({ q: "Your idea", a: d.what });
+    else if (d.kind === "question") asked = d.what;
+    else if (d.kind === "answer") { rows.push({ q: asked ?? "Answer", a: d.what }); asked = undefined; }
+    else if (d.kind === "resolve") rows.push({ q: "Data choice", a: d.what });
+    else if (d.kind === "flag" || d.kind === "blocked" || d.kind === "done") rows.push({ q: d.what, tool: true });
+  }
+  return rows.reverse();
+}
+
+/**
+ * The interview so far, as given: read-only history under the current question (K5a). The spec
+ * panel is the only editor, so after an edit the two can differ; the heading says so.
+ * No live region: focus moving to the new question announces the change.
+ */
+export function Ledger({ log, collapsed = false }: { log: Decision[]; collapsed?: boolean }) {
+  const rows = ledgerRows(log);
+  const list$ = useRef<HTMLOListElement>(null);
+  const body = useRef<HTMLDivElement>(null);
+  // A new "Data choice" row is where the resolved red card folds to (GSAP, see motion/fold.ts).
+  const choices = rows.filter((r) => r.q === "Data choice").length;
+  const seen = useRef(choices);
+  useEffect(() => {
+    if (choices > seen.current) foldInto(list$.current?.querySelector<HTMLElement>('[data-fold="data-choice"]') ?? null);
+    seen.current = choices;
+  }, [choices]);
+  if (!rows.length) return null;
+
+  // Collapsed history opens and closes by height instead of jumping (reduced motion: native).
+  const onSummary = (e: { currentTarget: HTMLElement; preventDefault: () => void }) => {
+    const d = e.currentTarget.parentElement as HTMLDetailsElement | null;
+    const el = body.current;
+    if (!d || !el || !motionOk()) return;
+    const t = kilnTiming();
+    if (d.open) {
+      e.preventDefault();
+      gsap.to(el, { height: 0, autoAlpha: 0, duration: t.quick, ease: t.ease,
+        onComplete: () => { d.open = false; gsap.set(el, { clearProps: "height,opacity,visibility" }); } });
+    } else {
+      requestAnimationFrame(() => gsap.from(el, { height: 0, autoAlpha: 0, duration: t.quick, ease: t.ease, clearProps: "height,opacity,visibility" }));
+    }
+  };
+
+  const list = (
+    <ol ref={list$}>
+      {rows.map((r, i) => (
+        <li key={i} data-fold={r.q === "Data choice" ? "data-choice" : undefined} className="border-b border-hairline py-(--space-2) last:border-b-0">
+          <p className="small font-normal text-ink-muted">{r.q}</p>
+          {!r.tool && <p className="body mt-(--space-1) whitespace-pre-wrap text-ink">{r.a}</p>}
+        </li>
+      ))}
+    </ol>
+  );
+  // After the interview the history is reference, not the task: one closed line, opened on demand.
+  if (collapsed) {
+    const answers = rows.filter((r) => !r.tool).length;
+    return (
+      <details className="border-t border-hairline pt-(--space-3)">
+        <summary onClick={onSummary} className="label w-fit cursor-pointer text-ink-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-accent">
+          Your answers, as given ({answers})
+        </summary>
+        <div ref={body} className="overflow-hidden"><div className="pt-(--space-2)">{list}</div></div>
+      </details>
+    );
+  }
+  return (
+    <section aria-labelledby="ledger-heading" className="flex flex-col gap-(--space-2)">
+      <h2 id="ledger-heading" className="label text-ink-muted">Your answers, as given</h2>
+      {list}
+    </section>
+  );
+}
+
+/** The current question as the statement (heading-2), its field under it; the pushback takes its place while it blocks. */
+export function Composer({ session, busy, text, setText, onAnswer, onResolve }: {
   session: Session; busy: boolean; text: string; setText: (s: string) => void;
   onAnswer: (s: string) => void; onResolve: (c: ResolveChoice) => void;
 }) {
   if (session.pushback?.blocking) return <PushbackCard session={session} busy={busy} onResolve={onResolve} />;
   if (session.step === "scope") return <p className="small font-normal text-ink-muted">Loading scope options…</p>;
+  const n = session.log.filter((d) => d.kind === "question").length + 1;
+  // While the next turn loads, the question just answered stays put (dimmed) so the screen doesn't empty.
+  if (busy && session.question) {
+    return (
+      <div aria-busy="true" className="flex flex-col gap-(--space-3)">
+        <div className="flex flex-col gap-(--space-1)">
+          <p className="label text-ink-muted">Question {n}</p>
+          <h2 className="heading-2 text-ink-muted">{session.question.ask}</h2>
+        </div>
+        <p className="small font-normal text-ink-muted">Thinking…</p>
+      </div>
+    );
+  }
   if (busy || !session.question) return <p className="small font-normal text-ink-muted">{busy ? "Thinking…" : "Waiting for the interviewer."}</p>;
 
-  const q = session.question;
+  return <QuestionForm q={session.question} n={n} busy={busy} text={text} setText={setText} onAnswer={onAnswer} />;
+}
+
+/** One question: it arrives by lines (GSAP SplitText), then its chips and field rise in under it. */
+function QuestionForm({ q, n, busy, text, setText, onAnswer }: {
+  q: NonNullable<Session["question"]>; n: number; busy: boolean;
+  text: string; setText: (s: string) => void; onAnswer: (s: string) => void;
+}) {
+  const head = useRef<HTMLHeadingElement>(null);
+  const rest = useRef<HTMLDivElement>(null);
+  useLineReveal(head, q.ask);
+  useRiseIn(rest, q.ask);
   return (
-    <form onSubmit={(e) => { e.preventDefault(); onAnswer(text); }} className="flex flex-col gap-(--space-2)">
-      {q.chips.length > 0 && (
-        <div className="flex flex-wrap gap-(--space-2)">
-          {q.chips.map((c) => (
-            <Button key={c} kind="outline" onClick={() => setText(text ? `${text}; ${c}` : c)}>{c}</Button>
-          ))}
-        </div>
-      )}
-      <div className="flex flex-wrap items-end gap-(--space-2)">
-        <TextField id="answer" label={q.ask} hideLabel multiline rows={2} value={text} onChange={setText} className="min-w-0 flex-1"
+    <form onSubmit={(e) => { e.preventDefault(); onAnswer(text); }} className="flex flex-col gap-(--space-3)">
+      <div className="flex flex-col gap-(--space-1)">
+        <p className="label text-ink-muted">Question {n}</p>
+        <h2 ref={head} className="heading-2 text-ink">{q.ask}</h2>
+      </div>
+      <div ref={rest} className="flex flex-col gap-(--space-3)">
+        {q.chips.length > 0 && (
+          <div className="flex flex-wrap gap-(--space-2)">
+            {q.chips.map((c) => (
+              <Button key={c} kind="outline" onClick={() => setText(text ? `${text}; ${c}` : c)}>{c}</Button>
+            ))}
+          </div>
+        )}
+        {/* The field's name stays the question (sr-only label), so focus on it reads the question. */}
+        <TextField id="answer" label={q.ask} hideLabel multiline autosize rows={2} value={text} onChange={setText}
           placeholder="Your answer, in your own words"
-          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onAnswer(text); } }} />
-        <Button type="submit" disabled={!text.trim()}>Send</Button>
+          onKeyDown={submitOnEnter({ empty: !text.trim(), busy }, () => onAnswer(text))} />
+        <div className="flex flex-wrap items-center justify-between gap-(--space-3)">
+          <KeyHint items={[["Enter", "to send"], ["Shift + Enter", "for a new line"]]} />
+          <Button type="submit" disabled={!text.trim()}>Send</Button>
+        </div>
       </div>
     </form>
   );
@@ -372,94 +512,89 @@ function Composer({ session, busy, text, setText, onAnswer, onResolve }: {
 export function PushbackCard({ session, busy, onResolve }: { session: Session; busy: boolean; onResolve: (c: ResolveChoice) => void }) {
   const pb = session.pushback!;
   const names = pb.flagged.join(", ");
+  const card = useRef<HTMLDivElement>(null);
+  // Note where the card is, so its answer can slide from here into the answer list.
+  const resolve = (choice: PushbackChoice) => { foldFrom(card.current); onResolve(choice); };
   return (
-    <Notice tone="danger" title={`Hold on: this would use student records (${names})`}
+    <div ref={card}>
+    <Notice tone="danger" title={<>Hold on: this would use <InkMark kind="underline">student records</InkMark> ({names})</>}
       actions={<Button kind="link" danger disabled={busy} onClick={() => onResolve("keep")}>Keep it anyway</Button>}>
       <p>That counts as Penn State Level 3–4 data (FERPA). AI Studio agents may only use Level 1–2 data. How should the agent work instead?</p>
-      <ul className="mt-(--space-3) flex flex-col gap-(--space-3)">
+      {/* Each way forward is one row you can click anywhere: the title is its name, the explanation its description. */}
+      <ul className="mt-(--space-3) flex flex-col border-y border-hairline">
         {pb.options.map((choice, i) => {
           const opt = SCENARIO.pushback.options[choice];
           return (
-            <li key={choice} className="flex flex-col items-start gap-(--space-1)">
-              <Button id={`pushback-${i}`} kind="outline" disabled={busy} onClick={() => onResolve(choice)} aria-describedby={`pushback-${i}-detail`}>
-                {opt.title}
-              </Button>
-              <span id={`pushback-${i}-detail`} className="text-ink-muted">{opt.detail}</span>
+            <li key={choice} className="border-b border-hairline last:border-b-0">
+              <button type="button" id={`pushback-${i}`} aria-labelledby={`pushback-${i}-title`} aria-describedby={`pushback-${i}-detail`}
+                disabled={busy} onClick={() => resolve(choice)}
+                className="group flex min-h-[calc(var(--space-5)+var(--space-1))] w-full items-center justify-between gap-(--space-3) px-(--space-2) py-(--space-3) text-left transition-colors duration-(--dur-quick) ease-out hover:bg-paper-sunk focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-accent disabled:cursor-default disabled:text-ink-muted disabled:hover:bg-transparent motion-reduce:transition-none">
+                <span className="flex flex-col gap-(--space-1)">
+                  <span id={`pushback-${i}-title`} className="small font-semibold text-ink">{opt.title}</span>
+                  <span id={`pushback-${i}-detail`} className="small font-normal text-ink-muted">{opt.detail}</span>
+                </span>
+                <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16"
+                  className="shrink-0 text-ink-muted transition-transform duration-(--dur-quick) ease-out group-hover:translate-x-(--space-1) group-hover:text-ink motion-reduce:transition-none">
+                  <path d="M3 8h10M9 4l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.6" />
+                </svg>
+              </button>
             </li>
           );
         })}
       </ul>
     </Notice>
+    </div>
   );
 }
 
-/** Inline editor for one spec slot: a TextField named after the slot, Save and Cancel. */
-export function SlotEditor({ slotKey, value, onSave, onCancel }: {
-  slotKey: SlotKey; value: string; onSave: (v: string) => void; onCancel: () => void;
+export function SpecPanel({ session, busy, onEdit, initialEditing }: {
+  session?: Session; busy: boolean; onEdit: (k: SlotKey, v: string) => void;
+  /** Server-render one slot's editor open (tests). The page always starts closed. */
+  initialEditing?: SlotKey;
 }) {
-  const [draft, setDraft] = useState(value);
-  return (
-    <form className="flex flex-col gap-(--space-2)" onSubmit={(e) => { e.preventDefault(); onSave(draft); }}>
-      <TextField id={`edit-${slotKey}`} label={SLOT_LABELS[slotKey]} hideLabel multiline rows={2} autoFocus value={draft} onChange={setDraft}
-        onFocus={(e) => { const end = e.currentTarget.value.length; e.currentTarget.setSelectionRange(end, end); }}
-        onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); onCancel(); } }} />
-      <div className="flex flex-wrap items-center gap-(--space-3)">
-        <Button kind="outline" type="submit">Save</Button>
-        <Button kind="link" onClick={onCancel}>Cancel</Button>
-      </div>
-    </form>
-  );
-}
-
-export function SpecPanel({ session, busy, onEdit }: { session?: Session; busy: boolean; onEdit: (k: SlotKey, v: string) => void }) {
-  const [editing, setEditing] = useState<SlotKey>();
-  /** After Cancel, focus returns to that slot's Edit button. */
-  const refocus = useRef<SlotKey | null>(null);
+  const [editing, setEditing] = useState<SlotKey | undefined>(initialEditing);
+  /** Typed text per slot. It survives a close (Esc, Cancel) and is dropped once saved. */
+  const [drafts, setDrafts] = useState<Partial<Record<SlotKey, string>>>({});
   const canEdit = (session?.step === "interview" || session?.step === "blueprint") && !session.pushback?.blocking && !busy;
-
-  useEffect(() => {
-    if (editing || !refocus.current) return;
-    document.getElementById(`edit-${refocus.current}-btn`)?.focus();
-    refocus.current = null;
-  }, [editing]);
 
   return (
     <>
       <section className="flex flex-col gap-(--space-2)">
-        <h2 className="label uppercase text-ink-muted">Spec so far</h2>
+        <h2 className="label text-ink-muted">Spec so far</h2>
         <dl>
           {SLOT_KEYS.map((key) => {
             const slot = session?.slots.find((s) => s.key === key);
+            const draft = drafts[key] ?? slot?.value ?? "";
+            const save = () => {
+              setEditing(undefined);
+              setDrafts((d) => { const next = { ...d }; delete next[key]; return next; });
+              onEdit(key, draft);
+            };
             return (
               <div key={key} className="border-b border-hairline py-(--space-2) last:border-b-0">
                 <dt className="flex flex-wrap items-center justify-between gap-(--space-2)">
                   <span className="small text-ink-soft">{SLOT_LABELS[key]}</span>
-                  {slot && <Tag>{slot.filledBy === "requester" ? "You" : `Prefilled · ${Math.round((slot.confidence ?? 0) * 100)}%`}</Tag>}
+                  {slot && <span className="label text-ink-muted">{slot.filledBy === "requester" ? "You" : `Prefilled · ${Math.round((slot.confidence ?? 0) * 100)}%`}</span>}
                 </dt>
-                {editing === key && slot ? (
-                  <dd className="mt-(--space-1)">
-                    <SlotEditor slotKey={key} value={slot.value}
-                      onSave={(v) => { setEditing(undefined); onEdit(key, v); }}
-                      onCancel={() => { refocus.current = key; setEditing(undefined); }} />
-                  </dd>
-                ) : (
-                  <dd className="mt-(--space-1) flex items-start justify-between gap-(--space-2)">
-                    <span className={`small font-normal ${slot ? "text-ink" : "text-ink-muted"}`}>{slot?.value ?? "—"}</span>
-                    {canEdit && slot && (
-                      <Button id={`edit-${key}-btn`} kind="link" className="shrink-0" onClick={() => setEditing(key)}>
-                        Edit<span className="sr-only"> {SLOT_LABELS[key]}</span>
-                      </Button>
-                    )}
-                  </dd>
-                )}
+                {/* The Edit button morphs into the slot editor (K6b). One open at a time; Esc = Cancel, focus back on Edit. */}
+                <dd className={`mt-(--space-1) flex gap-(--space-2) ${editing === key ? "flex-col" : "items-start justify-between"}`}>
+                  {editing !== key && <span className={`small font-normal ${slot ? "text-ink" : "text-ink-muted"}`}>{slot?.value ?? "—"}</span>}
+                  {slot && (canEdit || editing === key) && (
+                    <MorphNote id={`edit-${key}`} name={`morph-edit-${key}`} open={editing === key}
+                      onOpenChange={(o) => setEditing(o ? key : undefined)}
+                      trigger={<>Edit<span className="sr-only"> {SLOT_LABELS[key]}</span></>} triggerKind="link" triggerClassName="shrink-0"
+                      prompt={SLOT_LABELS[key]} hidePrompt value={draft} onChange={(v) => setDrafts((d) => ({ ...d, [key]: v }))} rows={2}
+                      submitLabel="Save" submitKind="outline" submitKey busy={busy} onSubmit={save} />
+                  )}
+                </dd>
               </div>
             );
           })}
         </dl>
       </section>
 
-      <section className="flex flex-col gap-(--space-2) border-t border-hairline pt-(--space-3)">
-        <h2 className="label uppercase text-ink-muted">Data sources</h2>
+      <section className="flex flex-col gap-(--space-2)">
+        <h2 className="label text-ink-muted">Data sources</h2>
         {session?.sources.length ? (
           <ul>{session.sources.map((s) => <SourceItem key={s.name} src={s} />)}</ul>
         ) : (
@@ -470,7 +605,7 @@ export function SpecPanel({ session, busy, onEdit }: { session?: Session; busy: 
             <span className="font-semibold text-ink">Rule added by your choice:</span> {SCENARIO.pushback.options[session.pushback.choice].rule}
           </p>
         )}
-        <p className="label text-ink-muted">Levels: Penn State data classes. “rule” = decided by a fixed table; “model” = classified by AI because no rule matched.</p>
+        <p className="small font-normal text-ink-muted">Levels: Penn State data classes. “rule” = decided by a fixed table; “model” = classified by AI because no rule matched.</p>
       </section>
 
       {session?.scope && <ScopeSummary session={session} />}

@@ -56,7 +56,7 @@ test("turning motion off finishes every tracked effect at once", () => {
   assert.deepEqual(seen, ["a:1", "a:kill", "b:1", "b:kill"]);
   seen.length = 0; finishMotion();
   assert.deepEqual(seen, [], "registry cleared");
-  assert.match(src("components/MotionSwitch.tsx"), /finishMotion\(\)/);
+  assert.match(src("components/motion/kiln.ts"), /if \(!next\) finish\(\)/, "the switch finishes through applyMotion");
 });
 
 // FoldedSheet unfold

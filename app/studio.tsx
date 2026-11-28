@@ -65,6 +65,15 @@ export function statusFor(a: ClientAction, s: Session): string | undefined {
   return undefined;
 }
 
+/**
+ * After a poll: once the reviewer has decided (the session leaves the review step), the strip's
+ * "Sent v{n} to the reviewer" is stale, so it clears (""). Review decisions never go in the strip;
+ * the state Notices announce them. undefined = leave the strip alone.
+ */
+export function stripAfterPoll(before: Session, after: Session): "" | undefined {
+  return before.step === "review" && after.step !== "review" ? "" : undefined;
+}
+
 /** Where focus goes after a tests action: a finished run lands on its headline (FE-4b); otherwise the step's next control. */
 export function focusAfter(a: ClientAction, s: Session): string {
   if ((a.type === "run_tests" || a.type === "rewrite_answer" || a.type === "accept_failure") && s.run) return "#tests-headline";
@@ -138,18 +147,23 @@ function StudioShell({ initialId, pending }: { initialId?: string; pending?: boo
   // While the reviewer has the blueprint, check for their decision. Stops on any step change.
   const sid = session?.id;
   const waiting = session?.step === "review" && session.review?.status === "pending";
+  const latest = useRef(session);
+  useEffect(() => { latest.current = session; }, [session]);
   useEffect(() => {
     if (!sid || !waiting) return;
     const timer = setInterval(() => {
       call(`/api/sessions/${sid}`).then((r) => {
         if (!r.session) return;
+        // The decision speaks through the state Notice; the strip's old "Sent v{n}…" just clears.
+        const cleared = stripAfterPoll(latest.current ?? r.session, r.session);
+        if (cleared !== undefined) say(cleared);
         apply(r);
         // The reviewer decided: the review card (and maybe the focused Copy button) goes away.
         if (r.session.step !== "review") focusNext.current = { sel: nextFocus(r.session), soft: true };
       }).catch(() => {});
     }, POLL_MS);
     return () => clearInterval(timer);
-  }, [sid, waiting, apply]);
+  }, [sid, waiting, apply, say]);
 
   // After an action: move focus to the next logical control once it exists and is enabled.
   useEffect(() => {

@@ -15,6 +15,13 @@ test("the loading state is the page's shell: the same top bar and main box, then
   assert.match(html, /Loading the blueprint…/);
 });
 
+// TESTER-FE 2587147: the CLS left was the scrollbar arriving with the content (centred boxes moved half
+// its width). The gutter is always reserved, so nothing moves sideways when a page outgrows the viewport.
+test("html reserves the scrollbar gutter, so a page growing past the viewport doesn't shift sideways", () => {
+  const css = readFileSync(join(__dirname, "globals.css"), "utf8");
+  assert.match(css, /html\s*\{[^}]*scrollbar-gutter:\s*stable/);
+});
+
 test("the route's Suspense fallback is that same loading state, not a bare line", () => {
   const page = readFileSync(join(__dirname, "review", "[id]", "page.tsx"), "utf8");
   assert.match(page, /fallback=\{<ReviewerLoading \/>\}/);

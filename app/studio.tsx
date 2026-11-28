@@ -88,6 +88,22 @@ export function focusAfter(a: ClientAction, s: Session): string {
   return nextFocus(s);
 }
 
+/** Response order on the requester page: newest applied request, newest applied action, actions in flight. */
+export interface Gate { any: number; action: number; inFlight: number }
+
+/**
+ * Whether a response may be applied (FE-6 tests 6 and 7). Every request takes a number when it
+ * starts. (a) An action response applies unless a newer action response already applied, so an
+ * action's new session and error always show. (b) A GET response is dropped while an action is in
+ * flight, or once anything that started after it has applied, so a late GET can't put an older
+ * session back. Returns the next gate, or null to drop.
+ */
+export function admit(g: Gate, n: number, kind: "get" | "action"): Gate | null {
+  if (kind === "action") return n < g.action ? null : { ...g, any: Math.max(g.any, n), action: n };
+  if (g.inFlight > 0 || n < g.any) return null;
+  return { ...g, any: n };
+}
+
 async function call(path: string, body?: unknown): Promise<SessionResponse> {
   const res = await fetch(path, body === undefined ? undefined : {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
@@ -129,15 +145,15 @@ function StudioShell({ initialId, pending }: { initialId?: string; pending?: boo
   const [arrived, setArrived] = useState<string>();
 
   /**
-   * Request order (FE-6 test 6, TESTER-FE 20:11): every request takes the next number when it
-   * starts; a response that started before the newest one already applied is dropped, so a late
-   * initial GET can't put an older session back over a newer edit.
+   * Request order (FE-6 tests 6 and 7; see admit): every request takes the next number when it
+   * starts, and apply() asks the gate whether its response still belongs on screen.
    */
   const seq = useRef(0);
-  const applied = useRef(0);
-  const apply = useCallback((r: SessionResponse, n: number): boolean => {
-    if (n < applied.current) return false;
-    applied.current = n;
+  const gate = useRef<Gate>({ any: 0, action: 0, inFlight: 0 });
+  const apply = useCallback((r: SessionResponse, n: number, kind: "get" | "action"): boolean => {
+    const next = admit(gate.current, n, kind);
+    if (!next) return false;
+    gate.current = next;
     if (r.session) {
       setSession(r.session);
       setBlueprint(r.blueprint);
@@ -156,7 +172,7 @@ function StudioShell({ initialId, pending }: { initialId?: string; pending?: boo
     const n = ++seq.current;
     call(`/api/sessions/${initialId}`)
       .then((r) => {
-        if (!apply(r, n)) return;
+        if (!apply(r, n, "get")) return;
         if (!r.session) setMissing(true);
       })
       .catch(() => setError("Network error. Reload the page."))
@@ -176,7 +192,7 @@ function StudioShell({ initialId, pending }: { initialId?: string; pending?: boo
         if (!r.session) return;
         // The decision speaks through the state Notice; the strip's old "Sent v{n}…" just clears.
         const cleared = stripAfterPoll(latest.current ?? r.session, r.session);
-        if (!apply(r, n)) return;
+        if (!apply(r, n, "get")) return;
         if (cleared !== undefined) say(cleared);
         // The reviewer decided: the review card (and maybe the focused Copy button) goes away.
         if (r.session.step !== "review") focusNext.current = { sel: nextFocus(r.session), soft: true };
@@ -204,15 +220,16 @@ function StudioShell({ initialId, pending }: { initialId?: string; pending?: boo
   const ask = (path: string, body?: unknown) => ({ n: ++seq.current, p: call(path, body) });
   const run = async ({ n, p }: { n: number; p: Promise<SessionResponse> }, focus?: string): Promise<SessionResponse | undefined> => {
     setBusy(true);
+    gate.current = { ...gate.current, inFlight: gate.current.inFlight + 1 };
     try {
       const r = await p;
-      apply(r, n);
-      if (r.session) focusNext.current = { sel: focus ?? nextFocus(r.session) };
+      if (apply(r, n, "action") && r.session) focusNext.current = { sel: focus ?? nextFocus(r.session) };
       return r;
     } catch {
       setError("Network error. Try again.");
       return undefined;
     } finally {
+      gate.current = { ...gate.current, inFlight: gate.current.inFlight - 1 };
       setBusy(false);
     }
   };

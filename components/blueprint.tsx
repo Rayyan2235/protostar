@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { createContext, useContext, useRef, type ReactNode } from "react";
 import type { Blueprint, BlueprintSlot, Level, Role2, Source, TestsSummary } from "@/lib/types";
 import { aiStudioText, blueprintJson, blueprintMarkdown, exportFileName } from "@/lib/export";
 import { formatDollars } from "@/lib/scoper";
@@ -15,6 +15,7 @@ import { FoldedSheet } from "@/components/FoldedSheet";
 import { SectionTabs } from "@/components/SectionTabs";
 import { Notice } from "@/components/Notice";
 import { InkMark } from "@/components/InkMark";
+import { useSectionReveal } from "@/components/motion/scroll";
 
 type Audience = "requester" | "reviewer";
 
@@ -47,9 +48,13 @@ export function SourceItem({ src }: { src: Source }) {
 }
 
 /** A blueprint section: grouped by space and headed by a mono label (Kiln §5: space, not rules). No boxes. */
+/** True on the reviewer's submitted sheet: its sections fade in on scroll (K7). */
+const RevealCtx = createContext(false);
+
 function Section({ title, aside, children }: { title: string; aside?: ReactNode; children: ReactNode }) {
+  const reveal = useContext(RevealCtx);
   return (
-    <section>
+    <section data-reveal={reveal ? "" : undefined}>
       <div className="mb-(--space-2) flex flex-wrap items-center justify-between gap-(--space-2)">
         <h3 className="label text-ink-muted">{title}</h3>
         {aside}
@@ -80,19 +85,28 @@ function SpecRow({ slot, audience }: { slot: BlueprintSlot; audience: Audience }
  * The requester's live draft is split into SectionTabs (K6b); a submitted blueprint shows in one
  * scroll on a FoldedSheet, because the reviewer approves the whole page.
  */
-export function BlueprintView({ blueprint: bp, audience, status }: {
+export function BlueprintView({ blueprint: bp, audience, status, costInk = true }: {
   blueprint: Blueprint;
   audience: Audience;
   /** The review state in words. Defaults to draft / submitted. */
   status?: string;
+  /** The cost's ink circle. Off once the reviewer's approved stamp carries the screen's one ink mark (K7). */
+  costInk?: boolean;
 }) {
   const { data, scope } = bp;
+  // K7: the reviewer's submitted sheet unfolds once per version and reveals its lower sections.
+  const reviewing = audience === "reviewer" && !bp.draft;
+  const sheetRef = useRef<HTMLElement>(null);
+  useSectionReveal(sheetRef, reviewing);
   const cost = (
     <span className="flex flex-col gap-(--space-1) sm:items-end">
       <span>
         {scope.estimate
           // The page's one ink mark: the number a reviewer signs off on.
-          ? <>≈ <InkMark kind="circle"><span className="font-semibold"><Figure value={scope.estimate.monthlyDollars} format={formatDollars} /></span></InkMark></>
+          ? (() => {
+              const figure = <span className="font-semibold"><Figure value={scope.estimate.monthlyDollars} format={formatDollars} /></span>;
+              return <>≈ {costInk ? <InkMark kind="circle">{figure}</InkMark> : figure}</>;
+            })()
           : "No list price on file for this model, so no estimate."}
       </span>
       <span className="text-ink-muted">{bp.costNote}</span>
@@ -203,15 +217,17 @@ export function BlueprintView({ blueprint: bp, audience, status }: {
   }
 
   const sheet = (
-    <article className="flex flex-col gap-(--space-6)" aria-label={`Blueprint v${bp.version}`}>
-      {header}
-      {summary}
-      {instructions}
-      {testsSection}
-      <DecisionLog log={bp.log} />
-    </article>
+    <RevealCtx.Provider value={reviewing}>
+      <article ref={sheetRef} className="flex flex-col gap-(--space-6)" aria-label={`Blueprint v${bp.version}`}>
+        {header}
+        {summary}
+        {instructions}
+        {testsSection}
+        <DecisionLog log={bp.log} version={bp.version} />
+      </article>
+    </RevealCtx.Provider>
   );
-  return bp.draft ? sheet : <FoldedSheet>{sheet}</FoldedSheet>;
+  return bp.draft ? sheet : <FoldedSheet unfold={reviewing} version={bp.version}>{sheet}</FoldedSheet>;
 }
 
 /** The Tests tab carries the run's state in its name, so the tab's accessible name says it. */

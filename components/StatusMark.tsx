@@ -1,6 +1,6 @@
 "use client";
 import { useRef, useState } from "react";
-import { gsap, useKilnMotion } from "@/components/motion/kiln";
+import { gsap, track, useKilnMotion } from "@/components/motion/kiln";
 import { DrawnMark } from "@/components/motion/DrawnCheck";
 
 export type MarkState = "idle" | "running" | "pass" | "fail" | "model-unavailable" | "judge-unavailable" | "accepted";
@@ -46,7 +46,7 @@ export function StatusMark({ state, land = false, delay = 0 }: { state: MarkStat
   const scope = useRef<HTMLSpanElement>(null);
   useKilnMotion(scope, (t) => {
     const arc = scope.current?.querySelector("[data-arc]");
-    if (arc) gsap.to(arc, { rotation: 360, transformOrigin: "50% 50%", duration: t.mood, ease: "none", repeat: -1 });
+    if (arc) track(gsap.to(arc, { rotation: 360, transformOrigin: "50% 50%", duration: t.mood, ease: "none", repeat: -1 }));
   }, [state]);
 
   const draws = land || fromRunning;

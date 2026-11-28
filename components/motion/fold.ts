@@ -4,7 +4,7 @@
  * on click, and when the new "Data choice" row mounts it slides from there into place.
  * One pending fold at a time; it expires if no row claims it soon after.
  */
-import { gsap, kilnTiming, motionOk } from "./kiln";
+import { gsap, kilnTiming, motionOk, track } from "./kiln";
 
 let pending: { top: number; at: number } | undefined;
 
@@ -21,5 +21,5 @@ export function foldInto(el: HTMLElement | null) {
   if (!el || !p || !motionOk() || performance.now() - p.at > 5000) return;
   const t = kilnTiming();
   const dy = p.top - el.getBoundingClientRect().top;
-  gsap.from(el, { y: dy, autoAlpha: 0, duration: t.quick, ease: t.ease, clearProps: "transform,opacity,visibility" });
+  track(gsap.from(el, { y: dy, autoAlpha: 0, duration: t.quick, ease: t.ease, clearProps: "transform,opacity,visibility" }));
 }

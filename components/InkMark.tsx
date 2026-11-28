@@ -1,6 +1,6 @@
 "use client";
 import { useRef, type ReactNode } from "react";
-import { gsap, useKilnMotion } from "@/components/motion/kiln";
+import { gsap, track, useKilnMotion } from "@/components/motion/kiln";
 
 /**
  * A hand-drawn ink stroke around a few words: an underline or a loose circle, in `signal`, drawn
@@ -27,7 +27,7 @@ export function InkMark({ kind, children }: { kind: InkKind; children: ReactNode
   const ref = useRef<HTMLSpanElement>(null);
   useKilnMotion(ref, (t) => {
     const path = ref.current?.querySelector("path");
-    if (path) gsap.from(path, { drawSVG: "0%", duration: t.enter, ease: t.ease, delay: t.quick });
+    if (path) track(gsap.from(path, { drawSVG: "0%", duration: t.enter, ease: t.ease, delay: t.quick }));
   });
   const s = SHAPES[kind];
   return (

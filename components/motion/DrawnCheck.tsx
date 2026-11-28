@@ -1,6 +1,6 @@
 "use client";
 import { useRef } from "react";
-import { gsap, useKilnMotion } from "./kiln";
+import { gsap, track, useKilnMotion } from "./kiln";
 
 const PATHS = {
   check: "M3 8.5l3 3 7-7",
@@ -25,7 +25,7 @@ export function DrawnMark({ kind, animate = true, delay = 0, tone, className = "
   useKilnMotion(ref, (t) => {
     if (!animate) return;
     const paths = ref.current?.querySelectorAll("path");
-    if (paths?.length) gsap.from(paths, { drawSVG: "0%", duration: t.quick, ease: t.ease, delay, stagger: t.quick / 4 });
+    if (paths?.length) track(gsap.from(paths, { drawSVG: "0%", duration: t.quick, ease: t.ease, delay, stagger: t.quick / 4 }));
   }, [animate, delay]);
   return (
     <svg ref={ref} aria-hidden="true" data-draw={kind} viewBox="0 0 16 16" className={`size-(--space-3) shrink-0 ${tone ?? TONE[kind]} ${className}`}>

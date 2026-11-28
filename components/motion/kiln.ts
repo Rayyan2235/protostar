@@ -15,13 +15,34 @@ import { CustomEase } from "gsap/CustomEase";
 import { DrawSVGPlugin } from "gsap/DrawSVGPlugin";
 import { Flip } from "gsap/Flip";
 import { SplitText } from "gsap/SplitText";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useGSAP } from "@gsap/react";
 import type { RefObject } from "react";
 import { savedMotion } from "./pref";
 
-if (typeof window !== "undefined") gsap.registerPlugin(useGSAP, CustomEase, DrawSVGPlugin, Flip, SplitText);
+if (typeof window !== "undefined") gsap.registerPlugin(useGSAP, CustomEase, DrawSVGPlugin, Flip, SplitText, ScrollTrigger);
 
-export { gsap, Flip, SplitText, useGSAP };
+export { gsap, Flip, ScrollTrigger, SplitText, useGSAP };
+
+/** What the registry needs from a tween or timeline. */
+export interface Finishable { progress(value: number): unknown; kill(): unknown }
+
+const running = new Set<Finishable>();
+
+/** Registers a running or queued effect, so turning motion off can finish it (Planner B L1). */
+export function track<T extends Finishable>(anim: T): T {
+  running.add(anim);
+  return anim;
+}
+
+/** Finishes every tracked effect at once (jumps to its end state) and forgets it. The Motion switch calls this when it turns motion off. */
+export function finishMotion() {
+  for (const a of [...running]) {
+    a.progress(1);
+    a.kill();
+  }
+  running.clear();
+}
 
 export const MOTION_OK = "(prefers-reduced-motion: no-preference)";
 

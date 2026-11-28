@@ -2,6 +2,7 @@
 
 import { useEffect, useSyncExternalStore } from "react";
 import { MOTION_KEY as KEY, savedMotion } from "@/components/motion/pref";
+import { finishMotion } from "@/components/motion/kiln";
 
 /**
  * Kiln Motion switch (KILN-AGENT §10): overrides the system's reduced-motion setting both ways.
@@ -42,6 +43,8 @@ export function MotionSwitch() {
 
   const toggle = () => {
     const next = !on;
+    // Off mid-page: every running or queued effect jumps to its end, still.
+    if (!next) finishMotion();
     try {
       localStorage.setItem(KEY, next ? "on" : "off");
       fallback = null;

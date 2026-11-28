@@ -70,6 +70,12 @@
   font-variation-settings: "SOFT" 100;
 }
 
+/* The scrollbar's room is always kept, so a page that outgrows the viewport after load
+   doesn't shift its centred boxes sideways (CLS on /review, TESTER-FE 2587147). */
+html {
+  scrollbar-gutter: stable;
+}
+
 body {
   background: var(--paper);
   color: var(--ink);

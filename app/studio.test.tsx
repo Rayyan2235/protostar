@@ -4,7 +4,10 @@ import assert from "node:assert/strict";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Session } from "@/lib/types";
 import type { Catalog } from "@/lib/engine";
-import Studio, { Composer, DoneBanner, Ledger, nextFocus, PushbackCard, SessionNotFound, SpecPanel, TestsStep } from "./studio";
+import Studio, { Composer, DoneBanner, Ledger, nextFocus, PushbackCard, SessionNotFound, SpecPanel } from "./studio";
+import { TestsScreen } from "./tests";
+import { fakeTestRun, fakeTests } from "@/lib/testRun.fake";
+import { refOf } from "@/lib/testSummary";
 import { ScopePicker, ScopeSummary } from "./scope";
 
 const count = (html: string, needle: string) => html.split(needle).length - 1;
@@ -73,7 +76,7 @@ test("nextFocus names the next logical control for each state", () => {
   assert.equal(nextFocus(session()), "#answer");
   assert.equal(nextFocus(session({ pushback: { blocking: true, flagged: ["Degree audits"], flaggedRules: [], options: ["selfreport", "route"], attempts: 1 } })), "#pushback-0");
   assert.equal(nextFocus(session({ step: "scope", question: undefined })), '#scope-picker [role="radio"][aria-checked="true"]');
-  assert.equal(nextFocus(session({ step: "tests" })), "#tests-continue");
+  assert.equal(nextFocus(session({ step: "tests" })), "#tests-run", "FE-4b: before a run, Run tests is the next control");
   assert.equal(nextFocus(session({ step: "blueprint" })), "#submit-blueprint");
   assert.equal(nextFocus(session({ step: "review" })), "#copy-link");
   assert.equal(nextFocus(session({ step: "done" })), "#new-idea");
@@ -149,8 +152,11 @@ test("pushback: an alert with each option as a button and a way past; no pill", 
   assert.equal(count(html, 'data-chip="arrow"'), 0);
 });
 
-test("tests step: Continue is the one pill, Change scope is outlined", () => {
-  const html = renderToStaticMarkup(<TestsStep busy={false} send={() => {}} />);
+test("tests step (FE-4b: TestsScreen): after a run, Continue is the one filled primary, Change scope is outlined", () => {
+  const tests = fakeTests();
+  const s = { id: "s1", step: "tests", idea: "x", slots: [], sources: [], asked: 5, log: [], tests, run: refOf(fakeTestRun(tests), tests) } as unknown as Session;
+  const noop = () => {};
+  const html = renderToStaticMarkup(<TestsScreen session={s} busy={false} onRun={noop} onRewrite={noop} onAccept={noop} onChangeModel={noop} onContinue={noop} />);
   assert.equal(count(html, 'data-chip="arrow"'), 1);
   assert.match(html, /id="tests-continue"/);
   assert.match(text(html), /Change scope/);

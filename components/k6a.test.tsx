@@ -9,7 +9,9 @@ import { Tag } from "./kiln/Tag";
 import { TextField } from "./TextField";
 import { Kbd } from "./Kbd";
 import { PaperGrain } from "./PaperGrain";
-import Studio, { TestsStep } from "@/app/studio";
+import Studio from "@/app/studio";
+import { TestsScreen } from "@/app/tests";
+import type { Session } from "@/lib/types";
 import { DecisionForm } from "@/app/review/[id]/reviewer";
 
 const ROOT = process.cwd();
@@ -81,7 +83,9 @@ test("--radius-pill appears only on the ChoiceList dot and Tag's live dot", () =
 test("one filled primary per screen (start, tests step, reviewer decision)", () => {
   const filled = (html: string) => count(html, "bg-button-bg");
   assert.ok(filled(renderToStaticMarkup(<Studio />)) <= 1, "start");
-  assert.equal(filled(renderToStaticMarkup(<TestsStep busy={false} send={() => {}} />)), 1, "tests step");
+  const noop = () => {};
+  const tests = { id: "s1", step: "tests", idea: "x", slots: [], sources: [], asked: 5, log: [] } as unknown as Session;
+  assert.equal(filled(renderToStaticMarkup(<TestsScreen session={tests} busy={false} onRun={noop} onRewrite={noop} onAccept={noop} onChangeModel={noop} onContinue={noop} />)), 1, "tests step");
   assert.equal(filled(renderToStaticMarkup(<DecisionForm version={2} enabled busy={false} onDecide={async () => true} />)), 1, "reviewer");
 });
 

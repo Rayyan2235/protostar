@@ -5,6 +5,7 @@ import { SLOT_KEYS, SLOT_LABELS, type Blueprint, type Decision, type PushbackCho
 import type { Catalog } from "@/lib/engine";
 import { reviewPath, type ClientAction, type SessionResponse } from "@/lib/api";
 import { SCENARIO } from "@/lib/scenario";
+import { choiceRules } from "@/lib/pushback";
 import { BlueprintView, ExportBar, SourceItem } from "@/components/blueprint";
 import { Button } from "@/components/kiln/Button";
 import { CopyButton } from "@/components/CopyButton";
@@ -19,6 +20,7 @@ import { StatusProvider, useStatus } from "@/components/StatusStrip";
 import { TextField } from "@/components/TextField";
 import { TopBar } from "@/components/TopBar";
 import { ScopePicker, ScopeSummary } from "./scope";
+import { TestsScreen } from "./tests";
 import { InkMark } from "@/components/InkMark";
 import { useLineReveal, useRiseIn } from "@/components/motion/reveal";
 import { toggleByHeight, type SummaryClick } from "@/components/motion/height";
@@ -44,11 +46,29 @@ export function nextFocus(s: Session): string {
     case "idea": return "#idea";
     case "interview": return s.pushback?.blocking ? "#pushback-0" : "#answer";
     case "scope": return '#scope-picker [role="radio"][aria-checked="true"]';
-    case "tests": return "#tests-continue";
+    case "tests": return s.run ? "#tests-continue" : "#tests-run";
     case "blueprint": return "#submit-blueprint";
     case "review": return "#copy-link";
     case "done": return "#new-idea";
   }
+}
+
+/**
+ * The StatusStrip line for a tests action that went through (K6 closed list, plan-4 §4 item 2).
+ * A refusal (data gate, check fail, missing note) logs a blocked line and stays in place as an
+ * alert, so it says nothing here. The run's own result is the WorkingLine's to say.
+ */
+export function statusFor(a: ClientAction, s: Session): string | undefined {
+  if (s.log.at(-1)?.kind === "blocked") return undefined;
+  if (a.type === "rewrite_answer") return "Saved your rewrite as a test";
+  if (a.type === "accept_failure") return "Accepted with a note";
+  return undefined;
+}
+
+/** Where focus goes after a tests action: a finished run lands on its headline (FE-4b); otherwise the step's next control. */
+export function focusAfter(a: ClientAction, s: Session): string {
+  if ((a.type === "run_tests" || a.type === "rewrite_answer" || a.type === "accept_failure") && s.run) return "#tests-headline";
+  return nextFocus(s);
 }
 
 async function call(path: string, body?: unknown): Promise<SessionResponse> {
@@ -86,6 +106,10 @@ function StudioShell({ initialId, pending }: { initialId?: string; pending?: boo
   const [missing, setMissing] = useState(false);
   /** Selector to focus once the current action has rendered. `soft`: only if focus was lost (poll updates). */
   const focusNext = useRef<{ sel: string; soft?: boolean } | null>(null);
+  /** The test run in this tab: in flight (click time), its measured time, and the run id that just came back. */
+  const [testsRun, setTestsRun] = useState<{ startedAt: number }>();
+  const [ran, setRan] = useState<{ seconds: number }>();
+  const [arrived, setArrived] = useState<string>();
 
   const apply = useCallback((r: SessionResponse) => {
     if (r.session) {
@@ -162,9 +186,26 @@ function StudioShell({ initialId, pending }: { initialId?: string; pending?: boo
     if (!session) return;
     const r = await run(call(`/api/sessions/${session.id}`, a), focus);
     // Transient results go to the StatusStrip (closed list); errors stay in place as alerts.
-    if (!r?.session || r.error) return;
+    if (!r?.session || r.error) return r;
     if (a.type === "edit") say("Saved");
     if (a.type === "submit" && r.session.review) say(`Sent v${r.session.review.version} to the reviewer`);
+    const line = statusFor(a, r.session);
+    if (line) say(line);
+    if (a.type === "rewrite_answer" || a.type === "accept_failure") focusNext.current = { sel: focusAfter(a, r.session) };
+    return r;
+  };
+  /** run_tests, timed from the click to the response (the WorkingLine's seconds). */
+  const runTests = async () => {
+    const startedAt = Date.now();
+    setRan(undefined);
+    setTestsRun({ startedAt });
+    const r = await send({ type: "run_tests" });
+    setTestsRun(undefined);
+    const fresh = r?.session?.run;
+    if (!fresh || r?.error) return;
+    setRan({ seconds: (Date.now() - startedAt) / 1000 });
+    setArrived(fresh.id);
+    focusNext.current = { sel: focusAfter({ type: "run_tests" }, r.session!) };
   };
   const answer = (value: string) => {
     if (!value.trim()) return;
@@ -217,7 +258,12 @@ function StudioShell({ initialId, pending }: { initialId?: string; pending?: boo
                     {session.step === "scope" && catalog ? (
                       <ScopePicker session={session} catalog={catalog} busy={busy} onChoose={(scope, role, knobs) => send({ type: "choose_scope", scope, role, knobs })} />
                     ) : session.step === "tests" ? (
-                      <TestsStep busy={busy} send={send} />
+                      <TestsScreen session={session} busy={busy} running={testsRun} ran={ran} arrived={arrived}
+                        onRun={runTests}
+                        onRewrite={(testId, value) => send({ type: "rewrite_answer", testId, value })}
+                        onAccept={(testId, role, note) => send({ type: "accept_failure", testId, role, note })}
+                        onChangeModel={() => send({ type: "reopen_scope" })}
+                        onContinue={() => send({ type: "continue" })} />
                     ) : (
                       <Composer session={session} busy={busy} text={text} setText={setText} onAnswer={answer} onResolve={(choice) => send({ type: "resolve", choice })} />
                     )}
@@ -266,18 +312,6 @@ function StartScreen({ text, setText, busy, error, onStart }: {
         <FlowRail variant="margin" />
         <p className="small font-normal text-ink-muted">Prototype. Public, Level 1–2 data only. Never student records.</p>
       </aside>
-    </div>
-  );
-}
-
-export function TestsStep({ busy, send }: { busy: boolean; send: (a: ClientAction) => unknown }) {
-  return (
-    <div className="flex flex-col gap-(--space-3)">
-      <p className="body text-ink-soft">The test run needs live models and isn&apos;t built yet.</p>
-      <div className="flex flex-wrap items-center gap-(--space-2)">
-        <Button id="tests-continue" disabled={busy} onClick={() => send({ type: "continue" })}>Continue to blueprint</Button>
-        <Button kind="outline" disabled={busy} onClick={() => send({ type: "reopen_scope" })}>Change scope</Button>
-      </div>
     </div>
   );
 }
@@ -588,11 +622,12 @@ export function SpecPanel({ session, busy, onEdit, initialEditing }: {
         ) : (
           <p className="small font-normal text-ink-muted">None yet.</p>
         )}
-        {session?.pushback?.choice && (
-          <p className="small font-normal text-ink-soft">
-            <span className="font-semibold text-ink">Rule added by your choice:</span> {SCENARIO.pushback.options[session.pushback.choice].rule}
+        {/* Every applied data choice, first-chosen first (BE-12): a second flag never drops the first rule. */}
+        {choiceRules(session?.pushback).map((r) => (
+          <p key={r.choice} className="small font-normal text-ink-soft">
+            <span className="font-semibold text-ink">Rule added by your choice:</span> {r.rule}
           </p>
-        )}
+        ))}
         <p className="small font-normal text-ink-muted">Levels: Penn State data classes. “rule” = decided by a fixed table; “model” = classified by AI because no rule matched.</p>
       </section>
 

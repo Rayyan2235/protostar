@@ -16,6 +16,7 @@ import { SectionTabs } from "@/components/SectionTabs";
 import { Notice } from "@/components/Notice";
 import { InkMark } from "@/components/InkMark";
 import { testNo } from "@/components/ResultTable";
+import { staleNote } from "@/lib/testSummary";
 import { useSectionReveal } from "@/components/motion/scroll";
 
 type Audience = "requester" | "reviewer";
@@ -201,12 +202,14 @@ export function BlueprintView({ blueprint: bp, audience, status, costInk = true 
       <pre className="small max-h-[calc(var(--space-8)*2)] overflow-auto whitespace-pre-wrap rounded-(--radius-sm) bg-paper-sunk p-(--space-3) font-body font-normal text-ink">{bp.instructions.text}</pre>
     </Section>
   );
-  const testsSection = <TestsSection tests={bp.tests} />;
+  const testsSection = <TestsSection tests={bp.tests} version={bp.version} frozen={!bp.draft} />;
 
   if (bp.draft && audience === "requester") {
     return (
       <article className="flex flex-col gap-(--space-5)" aria-label={`Blueprint v${bp.version}`}>
         {header}
+        {/* Outside the tab panels (K6), so it reads whichever tab is open. */}
+        <StaleLine blueprint={bp} />
         <SectionTabs id="blueprint" label="Blueprint sections" tabs={[
           { key: "summary", name: "Summary", panel: <div className="flex flex-col gap-(--space-6)">{summary}</div> },
           { key: "tests", name: testsTabName(bp), panel: testsSection },
@@ -246,7 +249,13 @@ const ROLE_NAME: Record<Role2, string> = { cheap: "Cheap", capable: "Capable" };
  * accepted note. The source Tag is always shown once there's a run, so an offline script is
  * never read as model evidence.
  */
-function TestsSection({ tests: t }: { tests: TestsSummary }) {
+/** `staleNote(version)` in danger ink when the blueprint's run is out of date; nothing otherwise. Never retyped. */
+export function StaleLine({ blueprint: bp }: { blueprint: Blueprint }) {
+  if (bp.tests.status !== "run" || !bp.tests.stale) return null;
+  return <p className="small font-semibold text-danger">{staleNote(bp.version)}</p>;
+}
+
+function TestsSection({ tests: t, version, frozen }: { tests: TestsSummary; version: number; frozen: boolean }) {
   if (t.status === "not-run") {
     return (
       <Section title="Tests">
@@ -255,10 +264,9 @@ function TestsSection({ tests: t }: { tests: TestsSummary }) {
     );
   }
   return (
-    <Section title="Tests" aside={<span className="flex flex-wrap items-center gap-(--space-2)">
-      {t.stale && <span className="label text-danger">Out of date</span>}
-      <Tag>{t.label}</Tag>
-    </span>}>
+    <Section title="Tests" aside={<Tag>{t.label}</Tag>}>
+      {/* The frozen sheet says it in its Tests section; the draft says it once above its tabs. */}
+      {frozen && t.stale && <p className="small font-semibold text-danger">{staleNote(version)}</p>}
       <p className="body text-ink">{t.headline}</p>
       {t.failures.length > 0 && (
         <ul className="mt-(--space-2)">

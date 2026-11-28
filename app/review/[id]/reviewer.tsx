@@ -46,6 +46,15 @@ function Shell({ mode, children }: { mode?: string; children: ReactNode }) {
   );
 }
 
+/** The page's own box while the blueprint loads: same top bar and main, so nothing shifts when it arrives. Also the route's Suspense fallback. */
+export function ReviewerLoading() {
+  return (
+    <Shell>
+      <p className="small font-normal text-ink-muted">Loading the blueprint…</p>
+    </Shell>
+  );
+}
+
 export default function Reviewer({ reviewId }: { reviewId: string }) {
   const [view, setView] = useState<ReviewView>();
   const [mode, setMode] = useState<string>();

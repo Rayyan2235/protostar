@@ -12,6 +12,10 @@ import { FlowRail } from "@/components/FlowRail";
 import { KeyHint } from "@/components/Kbd";
 import { Notice } from "@/components/Notice";
 import { ChoiceList } from "@/components/ChoiceList";
+import { ResultTable } from "@/components/ResultTable";
+import { DecisionLog } from "@/components/DecisionLog";
+import { ModeBadge } from "@/components/ModeBadge";
+import { TestsPreview } from "./TestsPreview";
 
 export const metadata: Metadata = { title: "Kiln parts · Protostar" };
 
@@ -88,6 +92,35 @@ export default function KilnPreview() {
             { value: "faq", title: "FAQ only", detail: "[ONE LINE]", meta: "[COST]", marks: <Tag>Low risk</Tag> },
             { value: "guided", title: "Guided eligibility check", detail: "[ONE LINE]", meta: "[COST]", marks: <><Tag>Medium risk</Tag><Tag selected>Recommended</Tag></> },
             { value: "open", title: "Open advising assistant", detail: "[ONE LINE]", meta: "[COST]", marks: <Tag>High risk</Tag> },
+          ]} />
+        </Section>
+        <Section name="ResultTable">
+          <ResultTable caption="Example results" runId="kiln" columns={[
+            { role: "cheap", name: "Cheap", source: "[MODEL]", passed: 1, total: 2, state: "fail" },
+            { role: "capable", name: "Capable", source: "[MODEL]", passed: 2, total: 2, state: "pass" },
+          ]} rows={[
+            { id: 1, prompt: "[STUDENT PROMPT]", marks: [{ role: "cheap", state: "fail", reason: "[ONE-SENTENCE REASON]" }, { role: "capable", state: "pass" }],
+              actions: <Button kind="outline">[ACTION]</Button> },
+            { id: 2, prompt: "[STUDENT PROMPT]", marks: [{ role: "cheap", state: "pass" }, { role: "capable", state: "pass" }] },
+          ]} />
+        </Section>
+
+        <Section name="Tests screen (FE-4a): every state, StatusMark, WorkingLine">
+          <TestsPreview />
+        </Section>
+
+        <Section name="ModeBadge">
+          <div className="flex flex-wrap gap-(--space-2)">
+            <ModeBadge mode="offline" />
+            <ModeBadge mode="anthropic" />
+          </div>
+        </Section>
+
+        <Section name="DecisionLog">
+          <DecisionLog log={[
+            { at: "", who: "requester", what: "[WHAT THE REQUESTER DECIDED]" },
+            { at: "", who: "tool", what: "[WHAT THE TOOL DID]" },
+            { at: "", who: "reviewer", what: "[WHAT THE REVIEWER DECIDED]" },
           ]} />
         </Section>
       </main>

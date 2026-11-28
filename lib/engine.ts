@@ -167,6 +167,7 @@ const DECIDED: Record<string, string> = {
  * 409 and nothing is reduced or saved: no blocked line lands in the requester's log.
  */
 export async function reviewAct(reviewId: string, input: unknown): Promise<{ status: 200 | 400 | 404 | 409; body: ReviewResponse }> {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return { status: 400, body: { error: "Invalid request." } };
   const parsed = ReviewActionSchema.safeParse(input);
   if (!parsed.success) return { status: 400, body: { error: parsed.error.issues[0]?.message ?? "Invalid action." } };
   const a = parsed.data;

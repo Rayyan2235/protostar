@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useRef, type ReactNode } from "react";
-import type { Blueprint, BlueprintSlot, Level, Source } from "@/lib/types";
+import type { Blueprint, BlueprintSlot, Level, Role2, Source, TestsSummary } from "@/lib/types";
 import { aiStudioText, blueprintJson, blueprintMarkdown, exportFileName } from "@/lib/export";
 import { formatDollars } from "@/lib/scoper";
 import { Button } from "@/components/kiln/Button";
@@ -15,6 +15,7 @@ import { FoldedSheet } from "@/components/FoldedSheet";
 import { SectionTabs } from "@/components/SectionTabs";
 import { Notice } from "@/components/Notice";
 import { InkMark } from "@/components/InkMark";
+import { testNo } from "@/components/ResultTable";
 import { useSectionReveal } from "@/components/motion/scroll";
 
 type Audience = "requester" | "reviewer";
@@ -125,7 +126,7 @@ export function BlueprintView({ blueprint: bp, audience, status, costInk = true 
           { label: "Est. cost / month", value: cost },
           { label: "Highest data level", value: `Level ${data.maxLevel} · ${data.allowed ? "allowed" : "blocked"}` },
           { label: "Data choice", value: data.pushback ? data.pushback.title : "Nothing flagged" },
-          { label: "Tests", value: bp.tests.status === "not-run" ? "Not run yet" : String(bp.tests.status) },
+          { label: "Tests", value: bp.tests.status === "not-run" ? "Not run yet" : bp.tests.headline },
           { label: "Status", value: status ?? (bp.draft ? "Draft, not submitted" : "Submitted") },
         ]}
       />
@@ -200,11 +201,7 @@ export function BlueprintView({ blueprint: bp, audience, status, costInk = true 
       <pre className="small max-h-[calc(var(--space-8)*2)] overflow-auto whitespace-pre-wrap rounded-(--radius-sm) bg-paper-sunk p-(--space-3) font-body font-normal text-ink">{bp.instructions.text}</pre>
     </Section>
   );
-  const testsSection = (
-    <Section title="Tests">
-      <p className="body text-ink-soft">{bp.tests.note}</p>
-    </Section>
-  );
+  const testsSection = <TestsSection tests={bp.tests} />;
 
   if (bp.draft && audience === "requester") {
     return (
@@ -236,7 +233,50 @@ export function BlueprintView({ blueprint: bp, audience, status, costInk = true 
 
 /** The Tests tab carries the run's state in its name, so the tab's accessible name says it. */
 export function testsTabName(bp: Blueprint): string {
-  return bp.tests.status === "not-run" ? "Tests · not run" : "Tests";
+  const t = bp.tests;
+  if (t.status === "not-run") return "Tests · not run";
+  if (t.stale) return "Tests · out of date";
+  return t.failures.length ? `Tests · ${t.failures.length} failed` : "Tests · all passed";
+}
+
+const ROLE_NAME: Record<Role2, string> = { cheap: "Cheap", capable: "Capable" };
+
+/**
+ * The blueprint's tests: the headline first, then each failure as a hairline row with its
+ * accepted note. The source Tag is always shown once there's a run, so an offline script is
+ * never read as model evidence.
+ */
+function TestsSection({ tests: t }: { tests: TestsSummary }) {
+  if (t.status === "not-run") {
+    return (
+      <Section title="Tests">
+        <p className="body text-ink-soft">{t.note}</p>
+      </Section>
+    );
+  }
+  return (
+    <Section title="Tests" aside={<span className="flex flex-wrap items-center gap-(--space-2)">
+      {t.stale && <span className="label text-danger">Out of date</span>}
+      <Tag>{t.label}</Tag>
+    </span>}>
+      <p className="body text-ink">{t.headline}</p>
+      {t.failures.length > 0 && (
+        <ul className="mt-(--space-2)">
+          {t.failures.map((f) => (
+            <li key={`${f.testId}-${f.role}`} data-failure="" className="flex flex-col gap-(--space-1) border-b border-hairline py-(--space-2) last:border-b-0">
+              <span className="flex flex-wrap items-baseline gap-(--space-2)">
+                <span className="label text-ink-muted">{testNo(f.testId)}</span>
+                <span className="small font-semibold text-ink">{ROLE_NAME[f.role]}</span>
+                <span className="small font-normal text-ink-soft">{f.prompt}</span>
+              </span>
+              <span className="small font-normal text-ink-soft">{f.reason}</span>
+              {f.accepted && <span className="small font-normal text-ink">Accepted: {f.accepted}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Section>
+  );
 }
 
 function download(text: string, name: string, type: string) {

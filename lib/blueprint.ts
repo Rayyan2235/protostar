@@ -67,7 +67,7 @@ export function draftInstructions(s: Session, knowledge: KnowledgeRef[]): string
     v("users") && sentence(`You help ${v("users")}`),
     scope && sentence(`Scope: ${scope.label}. ${scope.desc}`),
     knowledge.length ? sentence(`Answer only from these pages: ${knowledge.map((k) => k.title).join("; ")}`) : "",
-    v("never") && sentence(`You must never: ${v("never")}`),
+    v("never") && sentence(`Must never (from the requester): ${v("never")}`),
     rule && sentence(rule),
     v("handoff") && sentence(`Hand off to a human when: ${v("handoff")}`),
     v("examples") && sentence(`Example of a great vs. bad answer: ${v("examples")}`),
@@ -111,6 +111,6 @@ export function buildBlueprint(
     instructions: { text: draftInstructions(s, knowledge), draftedBy: "template" },
     tests: { ...TESTS_NOT_RUN },
     log: s.log,
-    costNote: `Estimate from public list prices (${PRICE_SOURCE}, ${PRICES_AS_OF}). Not a quote.`,
+    costNote: `Estimate from ${PRICE_SOURCE}, as of ${PRICES_AS_OF}. Not a quote.`,
   };
 }

@@ -143,3 +143,13 @@ test("SCENARIO check facts read the knowledge snapshots", () => {
   assert.ok(checks.handoff.test("Book an appointment with your advisor."));
   assert.ok(!checks.handoff.test("Finance needs a 3.50."));
 });
+
+test("Phase 2b actions: run_tests, rewrite_answer, accept_failure (contract 9.4)", () => {
+  assert.ok(ok(ClientActionSchema, { type: "run_tests" }));
+  assert.ok(ok(ClientActionSchema, { type: "rewrite_answer", testId: 3, value: "The bulletin minimum is 3.50; talk to your advisor." }));
+  assert.ok(ok(ClientActionSchema, { type: "accept_failure", testId: 3, role: "cheap", note: "Haiku is fine for this question." }));
+  assert.ok(!ok(ClientActionSchema, { type: "rewrite_answer", testId: 0, value: "x" }));
+  assert.ok(!ok(ClientActionSchema, { type: "rewrite_answer", testId: 1, value: "  " }));
+  assert.ok(!ok(ClientActionSchema, { type: "accept_failure", testId: 1, role: "judge", note: "x" }));
+  assert.ok(!ok(ClientActionSchema, { type: "accept_failure", testId: 1, role: "cheap" }), "note is required");
+});

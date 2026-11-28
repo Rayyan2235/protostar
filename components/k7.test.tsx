@@ -138,3 +138,31 @@ test("finishMotion also completes animations the registry never saw (StrictMode 
   finishMotion(timeline as never);
   assert.deepEqual(seen, ["untracked:1", "untracked:kill"]);
 });
+
+// TESTER-FE FAIL 088e1ce: /review LCP +36..+68 ms with motion on (limit +16). K7's mount work ran in the
+// layout effect, before the first paint. It now waits for the second frame; the LCP never waits on motion.
+test("afterPaint runs a callback on the second animation frame and can be cancelled", async () => {
+  const { afterPaint } = await import("./motion/kiln");
+  const frames: (() => void)[] = [];
+  const raf = (cb: () => void) => { frames.push(cb); return frames.length; };
+  const caf = (id: number) => { frames[id - 1] = () => {}; };
+  const seen: string[] = [];
+  afterPaint(() => seen.push("ran"), raf as never, caf as never);
+  frames.shift()!();
+  assert.deepEqual(seen, [], "not after the first frame: that one paints the final state");
+  frames.shift()!();
+  assert.deepEqual(seen, ["ran"]);
+  const frames2: (() => void)[] = [];
+  const cancel = afterPaint(() => seen.push("late"), ((cb: () => void) => { frames2.push(cb); return frames2.length; }) as never, (() => { frames2.length = 0; }) as never);
+  cancel();
+  frames2.forEach((f) => f());
+  assert.deepEqual(seen, ["ran"], "cancelled before it ran");
+});
+
+test("the reviewer's unfold and section reveal start after first paint, not in the layout effect", () => {
+  for (const f of ["components/FoldedSheet.tsx", "components/motion/scroll.ts"]) {
+    const m = src(f);
+    assert.match(m, /afterPaint\(/, f);
+  }
+  assert.doesNotMatch(src("components/motion/scroll.ts").split("afterPaint(")[0], /getBoundingClientRect/, "nothing measured before the first paint");
+});

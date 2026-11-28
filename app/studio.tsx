@@ -128,7 +128,16 @@ function StudioShell({ initialId, pending }: { initialId?: string; pending?: boo
   const [ran, setRan] = useState<{ seconds: number }>();
   const [arrived, setArrived] = useState<string>();
 
-  const apply = useCallback((r: SessionResponse) => {
+  /**
+   * Request order (FE-6 test 6, TESTER-FE 20:11): every request takes the next number when it
+   * starts; a response that started before the newest one already applied is dropped, so a late
+   * initial GET can't put an older session back over a newer edit.
+   */
+  const seq = useRef(0);
+  const applied = useRef(0);
+  const apply = useCallback((r: SessionResponse, n: number): boolean => {
+    if (n < applied.current) return false;
+    applied.current = n;
     if (r.session) {
       setSession(r.session);
       setBlueprint(r.blueprint);
@@ -139,13 +148,15 @@ function StudioShell({ initialId, pending }: { initialId?: string; pending?: boo
     if (r.mode) setMode(r.mode);
     if (r.catalog) setCatalog(r.catalog);
     setError(r.error);
+    return true;
   }, []);
 
   useEffect(() => {
     if (!initialId) return;
+    const n = ++seq.current;
     call(`/api/sessions/${initialId}`)
       .then((r) => {
-        apply(r);
+        if (!apply(r, n)) return;
         if (!r.session) setMissing(true);
       })
       .catch(() => setError("Network error. Reload the page."))
@@ -160,12 +171,13 @@ function StudioShell({ initialId, pending }: { initialId?: string; pending?: boo
   useEffect(() => {
     if (!sid || !waiting) return;
     const timer = setInterval(() => {
+      const n = ++seq.current;
       call(`/api/sessions/${sid}`).then((r) => {
         if (!r.session) return;
         // The decision speaks through the state Notice; the strip's old "Sent v{n}…" just clears.
         const cleared = stripAfterPoll(latest.current ?? r.session, r.session);
+        if (!apply(r, n)) return;
         if (cleared !== undefined) say(cleared);
-        apply(r);
         // The reviewer decided: the review card (and maybe the focused Copy button) goes away.
         if (r.session.step !== "review") focusNext.current = { sel: nextFocus(r.session), soft: true };
       }).catch(() => {});
@@ -188,11 +200,13 @@ function StudioShell({ initialId, pending }: { initialId?: string; pending?: boo
     }
   });
 
-  const run = async (p: Promise<SessionResponse>, focus?: string): Promise<SessionResponse | undefined> => {
+  /** Starts a request with the next sequence number (see apply). */
+  const ask = (path: string, body?: unknown) => ({ n: ++seq.current, p: call(path, body) });
+  const run = async ({ n, p }: { n: number; p: Promise<SessionResponse> }, focus?: string): Promise<SessionResponse | undefined> => {
     setBusy(true);
     try {
       const r = await p;
-      apply(r);
+      apply(r, n);
       if (r.session) focusNext.current = { sel: focus ?? nextFocus(r.session) };
       return r;
     } catch {
@@ -203,10 +217,10 @@ function StudioShell({ initialId, pending }: { initialId?: string; pending?: boo
     }
   };
 
-  const start = (idea: string) => run(call("/api/sessions", { idea })).then(() => setText(""));
+  const start = (idea: string) => run(ask("/api/sessions", { idea })).then(() => setText(""));
   const send = async (a: ClientAction, focus?: string) => {
     if (!session) return;
-    const r = await run(call(`/api/sessions/${session.id}`, a), focus);
+    const r = await run(ask(`/api/sessions/${session.id}`, a), focus);
     // Transient results go to the StatusStrip (closed list); errors stay in place as alerts.
     if (!r?.session || r.error) return r;
     if (a.type === "edit") say("Saved");

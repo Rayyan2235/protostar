@@ -6,6 +6,7 @@ import { OFFLINE_LABEL, MODEL_LABEL } from "@/lib/testSummary";
 import { Button } from "@/components/kiln/Button";
 import { Tag } from "@/components/kiln/Tag";
 import { MorphNote } from "@/components/MorphNote";
+import { Notice } from "@/components/Notice";
 import { ResultTable, type ResultColumn, type ResultMark, type ResultRow } from "@/components/ResultTable";
 import { WorkingLine } from "@/components/WorkingLine";
 
@@ -82,6 +83,8 @@ export function TestsScreen({ session: s, busy, running, ran, arrived, onRun, on
   return (
     <section aria-labelledby="tests-heading" className="flex flex-col gap-(--space-4)">
       <h2 id="tests-heading" className="title text-ink">Test the agent on two models</h2>
+      {/* A refused rewrite or accept (data gate, check fail, missing note) stays here as an alert. */}
+      {s.log.at(-1)?.kind === "blocked" && <Notice tone="danger">{s.log.at(-1)!.what}</Notice>}
 
       {run && (
         <div className="flex flex-col gap-(--space-2)">

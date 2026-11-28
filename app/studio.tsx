@@ -74,9 +74,16 @@ export function stripAfterPoll(before: Session, after: Session): "" | undefined 
   return before.step === "review" && after.step !== "review" ? "" : undefined;
 }
 
-/** Where focus goes after a tests action: a finished run lands on its headline (FE-4b); otherwise the step's next control. */
+/**
+ * Where focus goes after a tests action. A finished run lands on its headline (tests step). A
+ * refused rewrite or accept stays in its note field, still open with the text to fix; a saved one
+ * goes to "Run again". Otherwise the step's next control.
+ */
 export function focusAfter(a: ClientAction, s: Session): string {
-  if ((a.type === "run_tests" || a.type === "rewrite_answer" || a.type === "accept_failure") && s.run) return "#tests-headline";
+  const refused = s.log.at(-1)?.kind === "blocked";
+  if (a.type === "rewrite_answer") return refused ? `#rewrite-${a.testId}` : "#tests-rerun";
+  if (a.type === "accept_failure") return refused ? `#accept-${a.testId}-${a.role}` : "#tests-rerun";
+  if (a.type === "run_tests" && s.run && s.step === "tests") return "#tests-headline";
   return nextFocus(s);
 }
 
@@ -258,7 +265,7 @@ function StudioShell({ initialId, pending }: { initialId?: string; pending?: boo
           <div className="grid flex-1 gap-(--space-5) lg:grid-cols-12">
             <section aria-label={BLUEPRINT_STEPS.includes(session.step) ? "Blueprint" : "Interview"} className="flex min-w-0 flex-col gap-(--space-4) lg:col-span-8">
               {BLUEPRINT_STEPS.includes(session.step) ? (
-                <BlueprintStep session={session} blueprint={blueprint} busy={busy} error={error} send={send} onNewIdea={startOver} />
+                <BlueprintStep session={session} blueprint={blueprint} busy={busy} error={error} send={send} onNewIdea={startOver} onRunTests={runTests} />
               ) : (
                 <>
                   <div className="flex flex-col gap-(--space-3)">
@@ -331,9 +338,11 @@ function StartScreen({ text, setText, busy, error, onStart }: {
 }
 
 /** Main panel for the blueprint, review and done steps. */
-export function BlueprintStep({ session, blueprint, busy, error, send, onNewIdea }: {
+export function BlueprintStep({ session, blueprint, busy, error, send, onNewIdea, onRunTests }: {
   session: Session; blueprint?: Blueprint; busy: boolean; error?: string;
   send: (a: ClientAction) => unknown; onNewIdea: () => void;
+  /** Re-run the tests from the draft blueprint (F1). */
+  onRunTests?: () => void;
 }) {
   const r = session.review;
   const last = session.log.at(-1);
@@ -362,7 +371,8 @@ export function BlueprintStep({ session, blueprint, busy, error, send, onNewIdea
       </div>
       {blueprint ? (
         <div className="flex flex-col gap-(--space-4)">
-          <BlueprintView blueprint={blueprint} audience="requester" status={status} />
+          <BlueprintView blueprint={blueprint} audience="requester" status={status} busy={busy}
+            onRunTests={session.step === "blueprint" ? onRunTests : undefined} />
           {/* The live draft has the ExportBar in its Export tab; a submitted blueprint keeps it under the sheet. */}
           {!blueprint.draft && <ExportBar blueprint={blueprint} />}
         </div>

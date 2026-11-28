@@ -48,7 +48,7 @@ test("focus: tests step goes to Run tests before a run, Continue after; a finish
   assert.equal(nextFocus(session({ run })), "#tests-continue");
   assert.equal(focusAfter({ type: "run_tests" }, session({ run })), "#tests-headline");
   assert.equal(focusAfter({ type: "run_tests" }, session()), "#tests-run", "a failed run keeps focus on Run tests");
-  assert.equal(focusAfter({ type: "accept_failure", testId: 1, role: "cheap", note: "n" }, session({ run })), "#tests-headline");
+  assert.equal(focusAfter({ type: "accept_failure", testId: 1, role: "cheap", note: "n" }, session({ run })), "#tests-rerun", "T-2b F4: a saved accept goes to Run again");
 });
 
 test("staleNote, never retyped: the draft blueprint shows it once, outside the tab panels", () => {

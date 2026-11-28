@@ -7,7 +7,7 @@ import { SpecSheet } from "@/components/kiln/SpecSheet";
 import { TopBar } from "@/components/TopBar";
 import { TextField } from "@/components/TextField";
 import { EmptyState } from "@/components/EmptyState";
-import { Figure } from "@/components/Figure";
+import { FigureSample } from "./FigureSample";
 import { FlowRail } from "@/components/FlowRail";
 import { KeyHint } from "@/components/Kbd";
 import { Notice } from "@/components/Notice";
@@ -73,7 +73,7 @@ export default function KilnPreview() {
         </Section>
 
         <Section name="Figure (static)">
-          <p className="title text-ink">≈ <Figure value={112} format={(n) => `$${Math.round(n)}`} /> <span className="small font-normal text-ink-muted">[ESTIMATE NOTE]</span></p>
+          <FigureSample />
         </Section>
 
         <Section name="EmptyState">

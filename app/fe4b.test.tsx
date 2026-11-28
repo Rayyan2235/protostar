@@ -87,3 +87,14 @@ test("the studio renders TestsScreen, wired to run_tests / rewrite_answer / acce
   assert.match(s, /arrived=/);
   assert.match(s, /startedAt/);
 });
+
+// TESTER-FE nit on 78537aa: after approval the strip still read "Sent v2 to the reviewer".
+test("nit: after the reviewer decides, the requester's strip clears; the decision itself stays in the state Notice", async () => {
+  const { stripAfterPoll } = await import("./studio");
+  const review = (status: string) => ({ reviewId: "r", version: 2, status, submittedAt: at });
+  const before = session({ step: "review", review: review("pending") } as never);
+  assert.equal(stripAfterPoll(before, session({ step: "done", review: review("approved") } as never)), "");
+  assert.equal(stripAfterPoll(before, session({ step: "blueprint", review: review("changes") } as never)), "");
+  assert.equal(stripAfterPoll(before, before), undefined, "still waiting: leave the strip alone");
+  assert.match(src("app/studio.tsx"), /const cleared = stripAfterPoll\(/);
+});

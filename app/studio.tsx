@@ -21,6 +21,7 @@ import { TextField } from "@/components/TextField";
 import { TopBar } from "@/components/TopBar";
 import { ScopePicker, ScopeSummary } from "./scope";
 import { TestsScreen } from "./tests";
+import { ranLine } from "@/components/WorkingLine";
 import { InkMark } from "@/components/InkMark";
 import { useLineReveal, useRiseIn } from "@/components/motion/reveal";
 import { toggleByHeight, type SummaryClick } from "@/components/motion/height";
@@ -224,8 +225,11 @@ function StudioShell({ initialId, pending }: { initialId?: string; pending?: boo
     setTestsRun(undefined);
     const fresh = r?.session?.run;
     if (!fresh || r?.error) return;
-    setRan({ seconds: (Date.now() - startedAt) / 1000 });
+    const seconds = (Date.now() - startedAt) / 1000;
+    setRan({ seconds });
     setArrived(fresh.id);
+    // The tests step's WorkingLine says the result; a re-run from the blueprint says it here.
+    if (r.session!.step !== "tests") say(ranLine(fresh.columns[0]?.total ?? 0, seconds, fresh.offline));
     focusNext.current = { sel: focusAfter({ type: "run_tests" }, r.session!) };
   };
   const answer = (value: string) => {

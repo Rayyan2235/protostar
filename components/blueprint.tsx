@@ -214,12 +214,11 @@ export function BlueprintView({ blueprint: bp, audience, status, costInk = true,
       <article className="flex flex-col gap-(--space-5)" aria-label={`Blueprint v${bp.version}`}>
         {header}
         {/* Outside the tab panels (K6), so it reads whichever tab is open. */}
-        {stale && (
-          <div className="flex flex-wrap items-center gap-(--space-2)">
-            <StaleLine blueprint={bp} rise />
-            {onRunTests && <Button id="blueprint-rerun" kind="outline" disabled={busy} onClick={onRunTests}>Run tests again</Button>}
-          </div>
-        )}
+        {/* Always rendered (it returns null when fresh), so it sees an edit turn the run stale and rises in. */}
+        <div className="flex flex-wrap items-center gap-(--space-2) empty:hidden">
+          <StaleLine blueprint={bp} rise />
+          {stale && onRunTests && <Button id="blueprint-rerun" kind="outline" disabled={busy} onClick={onRunTests}>Run tests again</Button>}
+        </div>
         <SectionTabs id="blueprint" label="Blueprint sections" tabs={[
           { key: "summary", name: "Summary", panel: <div className="flex flex-col gap-(--space-6)">{summary}</div> },
           { key: "tests", name: testsTabName(bp), panel: (
@@ -269,15 +268,18 @@ const ROLE_NAME: Record<Role2, string> = { cheap: "Cheap", capable: "Capable" };
  * Never retyped. `rise` (draft only): when it appears after an edit in this tab, it rises in by
  * --space-2 with opacity (motionOk gates it); still on load, on the FoldedSheet and the reviewer.
  */
+/** The stale line's one transition: it "appeared" only when a fresh run turns stale while mounted. Same object back = no change. */
+export function staleStep(prev: { was: boolean; appeared: boolean }, stale: boolean): { was: boolean; appeared: boolean } {
+  return prev.was === stale ? prev : { was: stale, appeared: stale };
+}
+
 export function StaleLine({ blueprint: bp, rise = false }: { blueprint: Blueprint; rise?: boolean }) {
   const stale = bp.tests.status === "run" && bp.tests.stale;
   // Whether it just appeared in this tab ("state from props"): never on the first paint.
-  const [was, setWas] = useState(stale);
-  const [appeared, setAppeared] = useState(false);
-  if (was !== stale) {
-    setWas(stale);
-    setAppeared(stale);
-  }
+  const [seen, setSeen] = useState({ was: stale, appeared: false });
+  const next = staleStep(seen, stale);
+  if (next !== seen) setSeen(next);
+  const { appeared } = next;
   const ref = useRef<HTMLParagraphElement>(null);
   useKilnMotion(ref, (t) => {
     if (rise && appeared && ref.current) track(gsap.from(ref.current, { y: space("--space-2"), opacity: 0, duration: t.quick, ease: t.ease }));

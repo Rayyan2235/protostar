@@ -15,7 +15,7 @@ afterEach(() => mock.restoreAll());
 test("unfold: once per version; a poll re-render starts none; v2 unfolds once more", async () => {
   setMotion("on");
   const spy = mock.method(gsap, "fromTo", () => fake());
-  const unfolds = () => spy.mock.calls.filter((c) => (c.arguments[1] as Record<string, unknown>)?.["--fold"] !== undefined).length;
+  const unfolds = () => spy.mock.calls.filter((c) => (c.arguments[1] as unknown as Record<string, unknown> | undefined)?.["--fold"] !== undefined).length;
 
   const view = render(<FoldedSheet unfold version={1}><p>v1</p></FoldedSheet>);
   assert.equal(unfolds(), 0, "not before the first paint");

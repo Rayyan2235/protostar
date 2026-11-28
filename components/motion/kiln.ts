@@ -35,13 +35,31 @@ export function track<T extends Finishable>(anim: T): T {
   return anim;
 }
 
-/** Finishes every tracked effect at once (jumps to its end state) and forgets it. The Motion switch calls this when it turns motion off. */
-export function finishMotion() {
-  for (const a of [...running]) {
+/** What finishMotion reads besides the registry: GSAP's global timeline (top-level children). */
+interface Timeline { getChildren(nested?: boolean, tweens?: boolean, timelines?: boolean): Finishable[] }
+
+/**
+ * Finishes every running or queued effect at once (jumps to its end state) and forgets it: the
+ * tracked ones, and every other animation on GSAP's global timeline (a StrictMode duplicate, a
+ * tween someone forgot to track). The Motion switch calls this when it turns motion off.
+ */
+export function finishMotion(timeline: Timeline | undefined = typeof window === "undefined" ? undefined : gsap.globalTimeline) {
+  const all = new Set<Finishable>([...running, ...(timeline?.getChildren(false, true, true) ?? [])]);
+  for (const a of all) {
     a.progress(1);
     a.kill();
   }
   running.clear();
+}
+
+/**
+ * Applies the Motion switch. `data-motion` is written first, synchronously, so any effect that
+ * runs after this (a layout effect in the same commit, a poll re-render) already reads the new
+ * value; only then, when turning off, is everything finished.
+ */
+export function applyMotion(next: boolean, root: { dataset: DOMStringMap } = document.documentElement, finish: () => void = finishMotion) {
+  root.dataset.motion = next ? "on" : "off";
+  if (!next) finish();
 }
 
 export const MOTION_OK = "(prefers-reduced-motion: no-preference)";

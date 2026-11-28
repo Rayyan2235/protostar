@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fakeTestRun, fakeTests } from "./testRun.fake";
-import { headline, MODEL_LABEL, NOT_RUN_NOTE, OFFLINE_LABEL, refOf, summarize } from "./testSummary";
+import { headline, MODEL_LABEL, NOT_RUN_NOTE, OFFLINE_LABEL, refOf, staleNote, summarize } from "./testSummary";
 import type { Acceptance, Session, TestRun } from "./types";
 
 const tests = fakeTests();
@@ -125,4 +125,8 @@ test("summarize: stale follows testsStale; the stale run still renders its promp
   assert.ok(sum.status === "run" && sum.stale === true);
   if (sum.status !== "run") return;
   assert.equal(sum.failures[0].prompt, tests[0].prompt);
+});
+
+test("staleNote is the one text for an out-of-date run", () => {
+  assert.equal(staleNote(2), "Tests out of date: run before v2");
 });

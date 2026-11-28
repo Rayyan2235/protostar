@@ -116,3 +116,25 @@ test("reviewer sections carry data-reveal; requester ones don't; no inline opaci
   assert.match(src("components/motion/scroll.ts"), /focusin/);
   assert.match(src("components/motion/scroll.ts"), /beforeprint/);
 });
+
+// TESTER-FE FAIL 866dcfd: Motion off mid-unfold left --fold easing (an untracked or re-armed tween).
+test("Motion off: data-motion is 'off' before anything is finished, so no effect can re-arm in between", async () => {
+  const { applyMotion } = await import("./motion/kiln");
+  const doc = { dataset: {} as Record<string, string> };
+  const seen: string[] = [];
+  applyMotion(false, doc as never, () => seen.push(`finish sees ${doc.dataset.motion}`));
+  assert.deepEqual(seen, ["finish sees off"]);
+  applyMotion(true, doc as never, () => seen.push("finish on on"));
+  assert.equal(doc.dataset.motion, "on");
+  assert.deepEqual(seen, ["finish sees off"], "turning on finishes nothing");
+  assert.match(src("components/MotionSwitch.tsx"), /applyMotion\(next\)/);
+});
+
+test("finishMotion also completes animations the registry never saw (StrictMode duplicates, untracked tweens)", async () => {
+  const { finishMotion } = await import("./motion/kiln");
+  const seen: string[] = [];
+  const fake = (n: string) => ({ progress: (p: number) => { seen.push(`${n}:${p}`); }, kill: () => { seen.push(`${n}:kill`); } });
+  const timeline = { getChildren: () => [fake("untracked")] };
+  finishMotion(timeline as never);
+  assert.deepEqual(seen, ["untracked:1", "untracked:kill"]);
+});

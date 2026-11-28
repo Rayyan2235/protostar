@@ -15,6 +15,7 @@ import { FoldedSheet } from "@/components/FoldedSheet";
 import { SectionTabs } from "@/components/SectionTabs";
 import { Notice } from "@/components/Notice";
 import { InkMark } from "@/components/InkMark";
+import { testNo } from "@/components/ResultTable";
 import { useSectionReveal } from "@/components/motion/scroll";
 
 type Audience = "requester" | "reviewer";
@@ -239,8 +240,6 @@ export function testsTabName(bp: Blueprint): string {
 }
 
 const ROLE_NAME: Record<Role2, string> = { cheap: "Cheap", capable: "Capable" };
-/** "T-01": tests are numbered the same way on the tests screen and the blueprint. */
-export const testNo = (id: number) => `T-${String(id).padStart(2, "0")}`;
 
 /**
  * The blueprint's tests: the headline first, then each failure as a hairline row with its

@@ -42,7 +42,8 @@ test("one hairline <details> per test, numbered T-01; the summary names each mod
 test("the reason opens inline in the row; actions sit in the open row", () => {
   const html = render();
   const first = html.slice(html.indexOf("<details"), html.indexOf("</details>"));
-  assert.match(first, /<\/summary>[\s\S]*Doesn't state the 3\.50 minimum[\s\S]*Rewrite the answer/);
+  const inside = text(first.slice(first.indexOf("</summary>")));
+  assert.match(inside, /Cheap: Doesn't state the 3\.50 minimum.*Rewrite the answer/);
   assert.doesNotMatch(html, /title="/);
 });
 

@@ -94,15 +94,13 @@ export default function KilnPreview() {
           ]} />
         </Section>
         <Section name="ResultTable">
-          <ResultTable caption="Example results" columns={[{ title: "Cheap", note: "[MODEL]" }, { title: "Capable", note: "[MODEL]" }]} rows={[
-            { id: 1, label: "Test 1 · [FROM]", title: "[STUDENT PROMPT]", cells: [
-              { pass: false, verdict: "Fail", reason: "[ONE-SENTENCE REASON]" },
-              { pass: true, verdict: "Pass", reason: "[ONE-SENTENCE REASON]" },
-            ], actions: <Button kind="outline">[ACTION]</Button> },
-            { id: 2, label: "Test 2 · [FROM]", title: "[STUDENT PROMPT]", cells: [
-              { pass: true, verdict: "Pass", reason: "[ONE-SENTENCE REASON]" },
-              null,
-            ] },
+          <ResultTable caption="Example results" runId="kiln" columns={[
+            { role: "cheap", name: "Cheap", source: "[MODEL]", passed: 1, total: 2, state: "fail" },
+            { role: "capable", name: "Capable", source: "[MODEL]", passed: 2, total: 2, state: "pass" },
+          ]} rows={[
+            { id: 1, prompt: "[STUDENT PROMPT]", marks: [{ role: "cheap", state: "fail", reason: "[ONE-SENTENCE REASON]" }, { role: "capable", state: "pass" }],
+              actions: <Button kind="outline">[ACTION]</Button> },
+            { id: 2, prompt: "[STUDENT PROMPT]", marks: [{ role: "cheap", state: "pass" }, { role: "capable", state: "pass" }] },
           ]} />
         </Section>
 

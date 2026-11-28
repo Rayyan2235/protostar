@@ -15,6 +15,7 @@ import { ChoiceList } from "@/components/ChoiceList";
 import { ResultTable } from "@/components/ResultTable";
 import { DecisionLog } from "@/components/DecisionLog";
 import { ModeBadge } from "@/components/ModeBadge";
+import { TestsPreview } from "./TestsPreview";
 
 export const metadata: Metadata = { title: "Kiln parts · Protostar" };
 
@@ -102,6 +103,10 @@ export default function KilnPreview() {
               actions: <Button kind="outline">[ACTION]</Button> },
             { id: 2, prompt: "[STUDENT PROMPT]", marks: [{ role: "cheap", state: "pass" }, { role: "capable", state: "pass" }] },
           ]} />
+        </Section>
+
+        <Section name="Tests screen (FE-4a): every state, StatusMark, WorkingLine">
+          <TestsPreview />
         </Section>
 
         <Section name="ModeBadge">

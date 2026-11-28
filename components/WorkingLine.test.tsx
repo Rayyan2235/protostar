@@ -35,6 +35,7 @@ test("the StatusStrip hears 'Running tests' once and the result line once; the l
   const m = src("components/WorkingLine.tsx");
   assert.match(m, /say\(RUNNING_SAY\)/);
   assert.match(m, /say\(ranLine\(/);
-  assert.match(m, /useRiseIn\(/);
+  assert.match(m, /y: space\("--space-2"\)/, "rises in like useRiseIn, only as a run starts");
+  assert.match(m, /fromRunning/, "the crossfade plays only on running -> done");
   assert.doesNotMatch(m, /autoAlpha|visibility/);
 });

@@ -7,7 +7,7 @@
 import { complete } from "./llm";
 import { loadKnowledge } from "./knowledge";
 import { offlineDraftRaw } from "./offline";
-import { SCENARIO } from "./scenario";
+import { ruleText } from "./pushback";
 import { scopeByKey } from "./scoper";
 import { DraftOutputSchema, type DraftOutput } from "./schemas";
 import { SLOT_KEYS, SLOT_LABELS, type Draft, type Session } from "./types";
@@ -27,10 +27,11 @@ const SYSTEM = `You write the system instructions for an AI agent a university s
 - The agent answers only from the listed pages and never asks for or stores student records.
 Return the instructions as plain text the agent will read.`;
 
-function userMessage(s: Session): string {
+/** The drafter's user prompt (exported for tests). */
+export function userMessage(s: Session): string {
   const slot = (k: (typeof SLOT_KEYS)[number]) => s.slots.find((x) => x.key === k)?.value.trim() || "(none given)";
   const scope = s.scope ? scopeByKey(s.scope) : undefined;
-  const rule = s.pushback?.choice ? SCENARIO.pushback.options[s.pushback.choice].rule : "(none)";
+  const rule = ruleText(s.pushback) || "(none)"; // every applied choice, in order (BE-12)
   return [
     ...SLOT_KEYS.map((k) => `${SLOT_LABELS[k]}: ${slot(k)}`),
     `Sources it reads from: ${s.sources.map((x) => `${x.name} (Level ${x.level})`).join("; ") || "(none)"}`,

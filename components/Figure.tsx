@@ -80,7 +80,7 @@ export function Figure({ value, format, live = false }: { value: number; format:
 
   return (
     <span className="tabular-nums">
-      <span aria-hidden="true" data-roll="" className="inline-flex">
+      <span aria-hidden="true" data-roll="" className="inline-flex select-none">
         {digitColumns(text, text).map((c) => c.digit ? (
           <span key={c.key} className="inline-block h-[1lh] overflow-hidden">
             {/* The browser animates the change of offset; a column mounted fresh starts at its final offset. */}

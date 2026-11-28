@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useRef, type ReactNode } from "react";
+import { createContext, useContext, useRef, useState, type ReactNode } from "react";
 import type { Blueprint, BlueprintSlot, Level, Role2, Source, TestsSummary } from "@/lib/types";
 import { aiStudioText, blueprintJson, blueprintMarkdown, exportFileName } from "@/lib/export";
 import { formatDollars } from "@/lib/scoper";
@@ -16,7 +16,9 @@ import { SectionTabs } from "@/components/SectionTabs";
 import { Notice } from "@/components/Notice";
 import { InkMark } from "@/components/InkMark";
 import { testNo } from "@/components/ResultTable";
+import { staleNote } from "@/lib/testSummary";
 import { useSectionReveal } from "@/components/motion/scroll";
+import { gsap, space, track, useKilnMotion } from "@/components/motion/kiln";
 
 type Audience = "requester" | "reviewer";
 
@@ -86,13 +88,16 @@ function SpecRow({ slot, audience }: { slot: BlueprintSlot; audience: Audience }
  * The requester's live draft is split into SectionTabs (K6b); a submitted blueprint shows in one
  * scroll on a FoldedSheet, because the reviewer approves the whole page.
  */
-export function BlueprintView({ blueprint: bp, audience, status, costInk = true }: {
+export function BlueprintView({ blueprint: bp, audience, status, costInk = true, onRunTests, busy = false }: {
   blueprint: Blueprint;
   audience: Audience;
   /** The review state in words. Defaults to draft / submitted. */
   status?: string;
   /** The cost's ink circle. Off once the reviewer's approved stamp carries the screen's one ink mark (K7). */
   costInk?: boolean;
+  /** Draft only: re-run the tests from the blueprint (TESTS_RUN is allowed there). No handler, no control. */
+  onRunTests?: () => void;
+  busy?: boolean;
 }) {
   const { data, scope } = bp;
   // K7: the reviewer's submitted sheet unfolds once per version and reveals its lower sections.
@@ -201,15 +206,27 @@ export function BlueprintView({ blueprint: bp, audience, status, costInk = true 
       <pre className="small max-h-[calc(var(--space-8)*2)] overflow-auto whitespace-pre-wrap rounded-(--radius-sm) bg-paper-sunk p-(--space-3) font-body font-normal text-ink">{bp.instructions.text}</pre>
     </Section>
   );
-  const testsSection = <TestsSection tests={bp.tests} />;
+  const stale = bp.tests.status === "run" && bp.tests.stale;
+  const testsSection = <TestsSection tests={bp.tests} version={bp.version} frozen={!bp.draft} />;
 
   if (bp.draft && audience === "requester") {
     return (
       <article className="flex flex-col gap-(--space-5)" aria-label={`Blueprint v${bp.version}`}>
         {header}
+        {/* Outside the tab panels (K6), so it reads whichever tab is open. */}
+        {/* Always rendered (it returns null when fresh), so it sees an edit turn the run stale and rises in. */}
+        <div className="flex flex-wrap items-center gap-(--space-2) empty:hidden">
+          <StaleLine blueprint={bp} rise />
+          {stale && onRunTests && <Button id="blueprint-rerun" kind="outline" disabled={busy} onClick={onRunTests}>Run tests again</Button>}
+        </div>
         <SectionTabs id="blueprint" label="Blueprint sections" tabs={[
           { key: "summary", name: "Summary", panel: <div className="flex flex-col gap-(--space-6)">{summary}</div> },
-          { key: "tests", name: testsTabName(bp), panel: testsSection },
+          { key: "tests", name: testsTabName(bp), panel: (
+            <div className="flex flex-col gap-(--space-3)">
+              {testsSection}
+              {onRunTests && <div><Button id="blueprint-rerun-panel" kind="outline" disabled={busy} onClick={onRunTests}>Run tests again</Button></div>}
+            </div>
+          ) },
           { key: "decisions", name: "Decisions", panel: <DecisionLog log={bp.log} open /> },
           { key: "export", name: "Export", panel: <div className="flex flex-col gap-(--space-4)">{instructions}<ExportBar blueprint={bp} /></div> },
         ]} />
@@ -246,7 +263,32 @@ const ROLE_NAME: Record<Role2, string> = { cheap: "Cheap", capable: "Capable" };
  * accepted note. The source Tag is always shown once there's a run, so an offline script is
  * never read as model evidence.
  */
-function TestsSection({ tests: t }: { tests: TestsSummary }) {
+/**
+ * `staleNote(version)` in danger ink when the blueprint's run is out of date; nothing otherwise.
+ * Never retyped. `rise` (draft only): when it appears after an edit in this tab, it rises in by
+ * --space-2 with opacity (motionOk gates it); still on load, on the FoldedSheet and the reviewer.
+ */
+/** The stale line's one transition: it "appeared" only when a fresh run turns stale while mounted. Same object back = no change. */
+export function staleStep(prev: { was: boolean; appeared: boolean }, stale: boolean): { was: boolean; appeared: boolean } {
+  return prev.was === stale ? prev : { was: stale, appeared: stale };
+}
+
+export function StaleLine({ blueprint: bp, rise = false }: { blueprint: Blueprint; rise?: boolean }) {
+  const stale = bp.tests.status === "run" && bp.tests.stale;
+  // Whether it just appeared in this tab ("state from props"): never on the first paint.
+  const [seen, setSeen] = useState({ was: stale, appeared: false });
+  const next = staleStep(seen, stale);
+  if (next !== seen) setSeen(next);
+  const { appeared } = next;
+  const ref = useRef<HTMLParagraphElement>(null);
+  useKilnMotion(ref, (t) => {
+    if (rise && appeared && ref.current) track(gsap.from(ref.current, { y: space("--space-2"), opacity: 0, duration: t.quick, ease: t.ease }));
+  }, [appeared]);
+  if (!stale) return null;
+  return <p ref={ref} className="small font-semibold text-danger">{staleNote(bp.version)}</p>;
+}
+
+function TestsSection({ tests: t, version, frozen }: { tests: TestsSummary; version: number; frozen: boolean }) {
   if (t.status === "not-run") {
     return (
       <Section title="Tests">
@@ -255,10 +297,9 @@ function TestsSection({ tests: t }: { tests: TestsSummary }) {
     );
   }
   return (
-    <Section title="Tests" aside={<span className="flex flex-wrap items-center gap-(--space-2)">
-      {t.stale && <span className="label text-danger">Out of date</span>}
-      <Tag>{t.label}</Tag>
-    </span>}>
+    <Section title="Tests" aside={<Tag>{t.label}</Tag>}>
+      {/* The frozen sheet says it in its Tests section; the draft says it once above its tabs. */}
+      {frozen && t.stale && <p className="small font-semibold text-danger">{staleNote(version)}</p>}
       <p className="body text-ink">{t.headline}</p>
       {t.failures.length > 0 && (
         <ul className="mt-(--space-2)">

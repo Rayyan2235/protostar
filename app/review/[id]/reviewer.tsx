@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { ReviewDecision, ReviewRound, ReviewView } from "@/lib/types";
 import type { ReviewAction, ReviewResponse } from "@/lib/api";
-import { BlueprintView, ExportBar } from "@/components/blueprint";
+import { BlueprintView, ExportBar, StaleLine } from "@/components/blueprint";
 import { Button } from "@/components/kiln/Button";
 import { EmptyState } from "@/components/EmptyState";
 import { ModeBadge } from "@/components/ModeBadge";
@@ -156,6 +156,7 @@ export default function Reviewer({ reviewId }: { reviewId: string }) {
           </div>
           {error && <Notice tone="danger">{error}</Notice>}
           {/* Only while a decision is open; a decided version shows its status alone. Keyed by version so v2 starts empty. */}
+          {view.status === "pending" && <StaleLine blueprint={view.blueprint} />}
           {view.status === "pending" && <DecisionForm key={view.blueprint.version} version={view.blueprint.version} enabled busy={busy} onDecide={decide} />}
         </aside>
         <div className="min-w-0 lg:col-span-8">

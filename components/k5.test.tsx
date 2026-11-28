@@ -115,3 +115,9 @@ test("debounce: rapid changes fire once, with the last value", () => {
     mock.timers.reset();
   }
 });
+
+// TESTER-FE nit on 78537aa: copying the cost row picked up "$0123456789…".
+test("nit: Figure's rolling digit columns can't be selected, so a copy picks up the readable value only", () => {
+  const html = renderToStaticMarkup(<Figure value={112} format={(n) => "$" + Math.round(n)} />);
+  assert.match(html, /<span aria-hidden="true" data-roll=""[^>]*class="[^"]*select-none/);
+});

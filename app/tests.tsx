@@ -6,6 +6,7 @@ import { OFFLINE_LABEL, MODEL_LABEL } from "@/lib/testSummary";
 import { Button } from "@/components/kiln/Button";
 import { Tag } from "@/components/kiln/Tag";
 import { MorphNote } from "@/components/MorphNote";
+import { Notice } from "@/components/Notice";
 import { ResultTable, type ResultColumn, type ResultMark, type ResultRow } from "@/components/ResultTable";
 import { WorkingLine } from "@/components/WorkingLine";
 
@@ -49,6 +50,17 @@ export function rowsOf(s: Session): ResultRow[] {
   }));
 }
 
+const MISSING = {
+  accept: "Say why this answer is acceptable before you accept it.",
+  rewrite: "Write the answer it should give before you save it.",
+} as const;
+
+/** A note's submit: send the trimmed text, or say why not (like the reviewer's Request changes). */
+export function noteSubmit(kind: keyof typeof MISSING, value: string): { send: string } | { error: string } {
+  const text = value.trim();
+  return text ? { send: text } : { error: MISSING[kind] };
+}
+
 export interface TestsScreenProps {
   session: Session;
   busy: boolean;
@@ -73,7 +85,9 @@ export interface TestsScreenProps {
  */
 export function TestsScreen({ session: s, busy, running, ran, arrived, onRun, onRewrite, onAccept, onChangeModel, onContinue }: TestsScreenProps) {
   const run = s.run;
+  // Running: the tests about to run. Done: the run's own count (a rewrite may have added one since).
   const n = s.tests?.length ?? 0;
+  const ranCount = run?.columns[0]?.total ?? n;
   const rows = rowsOf(s).map((r) => ({
     ...r,
     actions: <RowActions row={r} busy={busy || !!running} onRewrite={onRewrite} onAccept={onAccept} onChangeModel={onChangeModel} />,
@@ -82,6 +96,8 @@ export function TestsScreen({ session: s, busy, running, ran, arrived, onRun, on
   return (
     <section aria-labelledby="tests-heading" className="flex flex-col gap-(--space-4)">
       <h2 id="tests-heading" className="title text-ink">Test the agent on two models</h2>
+      {/* A refused rewrite or accept (data gate, check fail, missing note) stays here as an alert. */}
+      {s.log.at(-1)?.kind === "blocked" && <Notice tone="danger">{s.log.at(-1)!.what}</Notice>}
 
       {run && (
         <div className="flex flex-col gap-(--space-2)">
@@ -95,7 +111,7 @@ export function TestsScreen({ session: s, busy, running, ran, arrived, onRun, on
       )}
 
       {running && <WorkingLine n={n} offline={run?.offline ?? true} state="running" startedAt={running.startedAt} />}
-      {!running && ran && run && <WorkingLine n={n} offline={run.offline} state="done" seconds={ran.seconds} />}
+      {!running && ran && run && <WorkingLine n={ranCount} offline={run.offline} state="done" seconds={ran.seconds} />}
 
       {!run && !running && (
         <p className="body text-ink-soft">No run yet. Each test runs on both models and is checked against what you said it must and must never do.</p>
@@ -110,7 +126,7 @@ export function TestsScreen({ session: s, busy, running, ran, arrived, onRun, on
           {run ? (
             <>
               <Button id="tests-continue" disabled={busy} onClick={onContinue}>Continue to blueprint</Button>
-              <Button kind="outline" disabled={busy} onClick={onRun}>Run again</Button>
+              <Button id="tests-rerun" kind="outline" disabled={busy} onClick={onRun}>Run again</Button>
             </>
           ) : (
             <>
@@ -139,6 +155,7 @@ function RowActions({ row, busy, onRewrite, onAccept, onChangeModel }: {
 }) {
   const [open, setOpen] = useState<string | null>(null);
   const [text, setText] = useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<Record<string, string | undefined>>({});
   const failing = row.marks.filter((m) => m.state === "fail" || m.state === "judge-unavailable");
   if (!failing.length) return null;
   const rewritable = row.marks.find((m) => m.state === "fail");
@@ -146,8 +163,14 @@ function RowActions({ row, busy, onRewrite, onAccept, onChangeModel }: {
     open: open === key,
     onOpenChange: (o: boolean) => setOpen(o ? key : null),
     value: text[key] ?? "",
-    onChange: (v: string) => setText((t) => ({ ...t, [key]: v })),
+    onChange: (v: string) => { setText((t) => ({ ...t, [key]: v })); setErrors((e) => ({ ...e, [key]: undefined })); },
   });
+  /** Send, or show why not in the field (aria-invalid + role=alert through TextField). */
+  const submit = (key: string, kind: "accept" | "rewrite", go: (v: string) => void) => {
+    const r = noteSubmit(kind, text[key] ?? "");
+    if ("error" in r) setErrors((e) => ({ ...e, [key]: r.error }));
+    else go(r.send);
+  };
   const two = failing.length > 1;
 
   return (
@@ -155,15 +178,15 @@ function RowActions({ row, busy, onRewrite, onAccept, onChangeModel }: {
       {rewritable && (
         <MorphNote id={`rewrite-${row.id}`} name={`morph-rewrite-${row.id}-${rewritable.role}`} {...field("rewrite")}
           trigger="Rewrite the answer" prompt="The answer it should give (saved as a test)" submitLabel="Save as a test" submitKind="outline"
-          submitKey required busy={busy} disabled={busy}
-          onSubmit={() => { const v = (text.rewrite ?? "").trim(); if (v) onRewrite(row.id, v); }} />
+          submitKey busy={busy} disabled={busy} error={errors.rewrite}
+          onSubmit={() => submit("rewrite", "rewrite", (v) => onRewrite(row.id, v))} />
       )}
       {failing.map((m) => (
         <MorphNote key={m.role} id={`accept-${row.id}-${m.role}`} name={`morph-accept-${row.id}-${m.role}`} {...field(`accept-${m.role}`)}
           trigger={two ? `Accept with a note (${ROLE_NAME[m.role]})` : "Accept with a note"}
           prompt={`Why ${ROLE_NAME[m.role]}'s answer is acceptable`} submitLabel="Accept" submitKind="outline"
-          submitKey required busy={busy} disabled={busy}
-          onSubmit={() => { const v = (text[`accept-${m.role}`] ?? "").trim(); if (v) onAccept(row.id, m.role, v); }} />
+          submitKey busy={busy} disabled={busy} error={errors[`accept-${m.role}`]}
+          onSubmit={() => submit(`accept-${m.role}`, "accept", (v) => onAccept(row.id, m.role, v))} />
       ))}
       <Button kind="outline" disabled={busy} onClick={onChangeModel}>Change model</Button>
     </div>

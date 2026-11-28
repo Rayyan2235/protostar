@@ -5,8 +5,10 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
-  findSessionIdByReviewId, getBlueprint, getDecisions, getRounds, getSession, resetDbForTests, saveReviewEvent, saveSession, saveSubmission,
+  deleteRuns, findSessionIdByReviewId, getBlueprint, getDecisions, getRounds, getRun, getRuns, getSession, openDb, resetDbForTests,
+  saveReviewEvent, saveRun, saveSession, saveSubmission,
 } from "./store";
+import { fakeTestRun } from "./testRun.fake";
 import { initial, reduce } from "./journey";
 import type { Blueprint, Session } from "./types";
 
@@ -93,4 +95,34 @@ test("an old database file with only the sessions and decisions tables still ope
   saveSubmission(s, bpFor(s, 1));
   assert.equal(getRounds("legacy").length, 1);
   resetDbForTests();
+});
+
+// --- Phase 2b: test runs (contract 9.7) -----------------------------------------------------
+
+test("test_runs round-trip; getRuns is oldest first; deleteRuns removes only that session's runs", () => {
+  const a = { ...fakeTestRun(), id: "run-a", at: "2026-11-12T01:00:00.000Z" };
+  const b = { ...fakeTestRun(), id: "run-b", at: "2026-11-12T02:00:00.000Z" };
+  const other = { ...fakeTestRun(), id: "run-x" };
+  saveSession(initial("s1", at));
+  saveSession(initial("s2", at));
+  saveRun("s1", b);
+  saveRun("s1", a);
+  saveRun("s2", other);
+  assert.deepEqual(getRun("run-a"), a);
+  assert.equal(getRun("nope"), undefined);
+  assert.deepEqual(getRuns("s1").map((r) => r.id), ["run-a", "run-b"]);
+  deleteRuns("s1");
+  assert.deepEqual(getRuns("s1"), []);
+  assert.deepEqual(getRuns("s2").map((r) => r.id), ["run-x"]);
+});
+
+test("test_runs records offline and evidence: an offline run is never evidence; a passing model run is", () => {
+  const offline = { ...fakeTestRun(), id: "off" };
+  const model = { ...offline, id: "model", offline: false, columns: offline.columns.map((c) => ({ ...c, source: "claude-sonnet-5" })),
+    verdicts: offline.verdicts.map((v) => ({ ...v, source: "claude-sonnet-5" })) };
+  saveSession(initial("s1", at));
+  saveRun("s1", offline);
+  saveRun("s1", model);
+  const rows = openDb().prepare("SELECT run_id, offline, evidence FROM test_runs ORDER BY run_id").all();
+  assert.deepEqual(rows, [{ run_id: "model", offline: 0, evidence: 1 }, { run_id: "off", offline: 1, evidence: 0 }]);
 });

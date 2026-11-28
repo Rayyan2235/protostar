@@ -12,7 +12,8 @@ The one polite region for **transient action results**, in the top bar of every 
   - "Downloaded protostar-blueprint-v{n}[-draft].md" / ".json" (the real file name)
   - "Sent v{n} to the reviewer"
   - FE-4a: "Running tests", and WorkingLine's result line ("Ran {n} tests on 2 models · {s} s", "(offline script)" when offline)
-- **Never here:** errors (they stay in place as `role="alert"` Notices or field errors) and review decisions (they stay in the state Notices, which already announce state).
+- FE-4b: "Saved your rewrite as a test", "Accepted with a note".
+- **Never here:** errors (they stay in place as `role="alert"` Notices or field errors) and review decisions (they stay in the state Notices, which already announce state). When a poll finds the reviewer has decided, the requester's strip clears, so a stale "Sent v{n} to the reviewer" doesn't linger.
 - **Rule:** each action's message lands in exactly one live region. The test counts it on rendered markup.
 - **Named exceptions** with their own region: the scope `Figure`'s debounced live value, and the interview's loading line until FE-4a's WorkingLine replaces it.
 

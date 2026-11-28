@@ -5,7 +5,8 @@ import { gsap, space, track, useKilnMotion } from "@/components/motion/kiln";
 
 /** What the StatusStrip says when a run starts (K6 closed list). */
 export const RUNNING_SAY = "Running tests";
-export const runningLine = (n: number) => `Running ${n} tests on 2 models`;
+/** No number before the tests exist (a first run generates them). */
+export const runningLine = (n: number) => (n > 0 ? `Running ${n} tests on 2 models` : "Running tests on 2 models");
 export const ranLine = (n: number, seconds: number, offline: boolean) =>
   `Ran ${n} tests ${offline ? "(offline script)" : "on 2 models"} · ${seconds.toFixed(1)} s`;
 

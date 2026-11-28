@@ -154,3 +154,11 @@ test("rowsOf / columnsOf: from the session's tests, run ref and acceptances", ()
   // A stale run whose tests were cleared still renders its failures.
   assert.equal(rowsOf({ ...s, tests: [] } as Session).length, 2);
 });
+
+test("FE-4b: a refused rewrite or accept (blocked log line) stays in place as an alert under the heading", () => {
+  const s = session(partialRun(), { log: [{ at, who: "tool", kind: "blocked", what: "That note mentions student records. Rewrite it without them." }] as never });
+  const html = render(s);
+  assert.match(html, /role="alert"[\s\S]*?That note mentions student records\./);
+  assert.ok(html.indexOf("<h2") < html.indexOf('role="alert"'));
+  assert.doesNotMatch(render(session(partialRun())), /role="alert"/);
+});

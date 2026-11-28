@@ -62,6 +62,15 @@ export function applyMotion(next: boolean, root: { dataset: DOMStringMap } = doc
   if (!next) finish();
 }
 
+/**
+ * Runs `fn` on the second animation frame, after the first frame has painted the server's final
+ * state, so motion never holds back the first paint or the LCP (TESTER-FE perf, K7). Returns a cancel.
+ */
+export function afterPaint(fn: () => void, raf: (cb: () => void) => number = requestAnimationFrame, caf: (id: number) => void = cancelAnimationFrame) {
+  let id = raf(() => { id = raf(fn); });
+  return () => caf(id);
+}
+
 export const MOTION_OK = "(prefers-reduced-motion: no-preference)";
 
 export interface KilnTiming {

@@ -149,7 +149,7 @@ test("afterPaint runs a callback on the second animation frame and can be cancel
   const seen: string[] = [];
   afterPaint(() => seen.push("ran"), raf as never, caf as never);
   frames.shift()!();
-  assert.deepEqual(seen, [], "not after the first frame: that one paints the final state");
+  assert.equal(seen.length, 0, "not after the first frame: that one paints the final state");
   frames.shift()!();
   assert.deepEqual(seen, ["ran"]);
   const frames2: (() => void)[] = [];
